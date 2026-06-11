@@ -5,19 +5,29 @@ const ageOptions = [
     id: "preschool",
     label: "3-5 岁",
     icon: "🧩",
-    title: "图像和声音先行",
-    detail: "每轮 6 题，重点是看图、听音和轻松选择。",
+    title: "大图、大声音、强提示",
+    detail: "每轮 6 题，也会练字母拼搭和完整拼写，提示更多、节奏更慢。",
     roundSize: 6,
-    spelling: "none",
+    guidedSpelling: true,
+    fullSpelling: true,
+    hintLevel: "strong",
+    optionCount: 3,
+    speechRate: { learn: 0.5, clear: 0.54, quiz: 0.58, segment: 0.48 },
+    challengeRatio: 0.08,
   },
   {
     id: "primary",
     label: "6-9 岁",
     icon: "✏️",
-    title: "选择加字母拼搭",
-    detail: "每轮 8 题，加入带提示的字母块拼写。",
+    title: "拼搭、目标和贴纸",
+    detail: "每轮 8 题，字母拼搭为主，穿插完整拼写和简单挑战。",
     roundSize: 8,
-    spelling: "guided",
+    guidedSpelling: true,
+    fullSpelling: true,
+    hintLevel: "medium",
+    optionCount: 4,
+    speechRate: { learn: 0.56, clear: 0.6, quiz: 0.64, segment: 0.52 },
+    challengeRatio: 0.16,
   },
   {
     id: "older",
@@ -26,9 +36,32 @@ const ageOptions = [
     title: "例句和完整拼写",
     detail: "每轮 10 题，包含完整拼写和更高阶词汇。",
     roundSize: 10,
-    spelling: "full",
+    guidedSpelling: true,
+    fullSpelling: true,
+    hintLevel: "light",
+    optionCount: 4,
+    speechRate: { learn: 0.62, clear: 0.66, quiz: 0.7, segment: 0.58 },
+    challengeRatio: 0.28,
   },
 ];
+
+const mascotOptions = [
+  { id: "fox", name: "小狐狸", symbol: "狐", color: "#f97316" },
+  { id: "bear", name: "小熊", symbol: "熊", color: "#8b5e34" },
+  { id: "owl", name: "猫头鹰", symbol: "鹰", color: "#6d5dfc" },
+];
+
+const stickerCatalog = ["晨光星星", "水果徽章", "森林脚印", "学校铅笔", "彩虹贴纸", "勇气宝石"];
+
+const phonicsOverrides = {
+  cat: { phonics: "c · a · t", ipa: "/kæt/", segments: ["ca", "t"] },
+  dog: { phonics: "d · o · g", ipa: "/dɔg/", segments: ["do", "g"] },
+  bird: { phonics: "b · ir · d", ipa: "/bɝːd/", segments: ["bir", "d"] },
+  fish: { phonics: "f · i · sh", ipa: "/fɪʃ/", segments: ["fi", "sh"] },
+  apple: { phonics: "a · pp · le", ipa: "/ˈæpəl/", segments: ["ap", "ple"] },
+  bus: { phonics: "b · u · s", ipa: "/bʌs/", segments: ["bu", "s"] },
+  book: { phonics: "b · oo · k", ipa: "/bʊk/", segments: ["boo", "k"] },
+};
 
 const themeDefinitions = [
   { id: "animals", name: "动物乐园", shortName: "动物", color: "#f06a6a", icon: "🐾" },
@@ -402,6 +435,8 @@ let activeQuiz = null;
 let audioContext = null;
 let preferredEnglishVoice = null;
 let speechSequenceId = 0;
+let parentVerified = false;
+let parentGate = createParentGate();
 
 const app = document.querySelector("#app");
 
@@ -437,16 +472,26 @@ app.addEventListener("click", (event) => {
   }
   if (action === "toggle-sound") toggleSound();
   if (action === "speak-word") speakWord(value, actionTarget.dataset.clarity || "clear");
+  if (action === "speak-segments") speakWordSegments(value);
+  if (action === "choose-mascot") chooseMascot(value);
   if (action === "learn-prev") moveLearn(-1);
   if (action === "learn-next") moveLearn(1);
   if (action === "start-quiz") startQuiz(value);
+  if (action === "start-adventure") startQuiz("adventure");
   if (action === "start-review") startQuiz("review");
+  if (action === "start-word-review") startWordReview(value);
   if (action === "answer-choice") answerChoice(value);
   if (action === "next-question") nextQuestion();
   if (action === "letter-add") addLetter(value);
   if (action === "letter-backspace") backspaceLetter();
   if (action === "letter-clear") clearLetters();
+  if (action === "hint-letter") hintLetter();
   if (action === "submit-spell") submitSpelling();
+  if (action === "check-parent") checkParentGate();
+  if (action === "refresh-parent-gate") {
+    parentGate = createParentGate();
+    render();
+  }
   if (action === "reset-progress") resetCurrentProgress();
 });
 
@@ -457,6 +502,10 @@ app.addEventListener("input", (event) => {
 });
 
 app.addEventListener("keydown", (event) => {
+  if (currentView === "parents" && event.key === "Enter" && event.target.matches("[data-parent-answer]")) {
+    checkParentGate();
+    return;
+  }
   if (!activeQuiz || currentView !== "quiz") return;
   if (event.key === "Enter") {
     const question = getCurrentQuestion();
@@ -473,13 +522,18 @@ function buildVocabulary() {
   return Object.entries(vocabularySeeds).flatMap(([themeId, entries]) =>
     entries.map(([word, meaning, symbol], index) => {
       const level = levelForIndex(index);
+      const speech = speechDataFor(word);
       return {
         id: `${themeId}-${slugify(word)}`,
         themeId,
         word,
         meaning,
         symbol,
+        image: createWordImage(themeId, word, meaning, index),
         example: exampleFor(themeId, word),
+        phonics: speech.phonics,
+        ipa: speech.ipa,
+        segments: speech.segments,
         ageBands: ageBandsForLevel(level),
         level,
         spellingLevel: spellingForLevel(level),
@@ -506,6 +560,93 @@ function ageBandsForLevel(level) {
 function spellingForLevel(level) {
   if (level === "starter" || level === "easy") return "guided";
   return "full";
+}
+
+function speechDataFor(word) {
+  const clean = cleanWord(word);
+  if (phonicsOverrides[clean]) return phonicsOverrides[clean];
+  const letters = clean.split("");
+  const midpoint = clean.length <= 4 ? clean.length - 1 : Math.ceil(clean.length / 2);
+  const segments =
+    clean.length <= 2 ? [clean] : [clean.slice(0, Math.max(1, midpoint)), clean.slice(Math.max(1, midpoint))];
+  return {
+    phonics: letters.join(" · "),
+    ipa: "",
+    segments: segments.filter(Boolean),
+  };
+}
+
+function createWordImage(themeId, word, meaning, index) {
+  const theme = themeMap[themeId];
+  const hue = Math.abs(hashString(`${themeId}-${word}`)) % 360;
+  const accent = theme?.color || `hsl(${hue} 72% 46%)`;
+  const warm = `hsl(${(hue + 34) % 360} 86% 72%)`;
+  const cool = `hsl(${(hue + 205) % 360} 70% 86%)`;
+  const initial = cleanWord(word).slice(0, 1).toUpperCase() || "?";
+  const clean = cleanWord(word);
+  const label = escapeSvg(meaning.slice(0, 4));
+  const object = illustrationSvgFor(clean, themeId, accent, warm, initial, index);
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 216 216" role="img" aria-label="${escapeSvg(word)}">
+      <rect width="216" height="216" rx="28" fill="${cool}"/>
+      <circle cx="42" cy="42" r="18" fill="${warm}" opacity=".85"/>
+      <circle cx="178" cy="48" r="10" fill="#fff" opacity=".82"/>
+      ${object}
+      <rect x="42" y="162" width="132" height="30" rx="15" fill="#fff" opacity=".9"/>
+      <text x="108" y="182" text-anchor="middle" font-family="PingFang SC, Arial, sans-serif" font-size="17" font-weight="800" fill="#233142">${label}</text>
+    </svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg.replace(/\s+/g, " ").trim())}`;
+}
+
+function illustrationSvgFor(word, themeId, accent, warm, initial, index) {
+  const colorMap = {
+    red: "#ef4444",
+    blue: "#2563eb",
+    yellow: "#facc15",
+    green: "#22c55e",
+    black: "#111827",
+    white: "#ffffff",
+    orange: "#fb923c",
+    purple: "#8b5cf6",
+    pink: "#f472b6",
+    brown: "#92400e",
+  };
+  if (word === "cat") {
+    return `<path d="M61 78 L73 45 L94 70 Q108 63 122 70 L143 45 L155 78 C164 117 142 150 108 150 C74 150 52 117 61 78Z" fill="#f8b45c"/><path d="M78 77 L74 57 L91 74Z" fill="#fff4d8"/><path d="M138 77 L142 57 L125 74Z" fill="#fff4d8"/><circle cx="94" cy="101" r="7" fill="#233142"/><circle cx="122" cy="101" r="7" fill="#233142"/><path d="M101 119 Q108 126 115 119" fill="none" stroke="#233142" stroke-width="6" stroke-linecap="round"/><path d="M108 110 L116 116 L100 116Z" fill="#233142"/>`;
+  }
+  if (word === "dog") {
+    return `<ellipse cx="108" cy="98" rx="54" ry="48" fill="#f4d6aa"/><path d="M60 79 C39 89 42 126 66 132 C76 116 76 92 60 79Z" fill="#8b5e34"/><path d="M156 79 C177 89 174 126 150 132 C140 116 140 92 156 79Z" fill="#8b5e34"/><circle cx="91" cy="96" r="7" fill="#233142"/><circle cx="125" cy="96" r="7" fill="#233142"/><ellipse cx="108" cy="112" rx="12" ry="9" fill="#233142"/><path d="M102 128 Q108 135 114 128" fill="none" stroke="#233142" stroke-width="5" stroke-linecap="round"/>`;
+  }
+  if (word === "bird") {
+    return `<ellipse cx="110" cy="102" rx="48" ry="40" fill="#5aa9e6"/><circle cx="126" cy="84" r="24" fill="#76c7f2"/><circle cx="133" cy="79" r="5" fill="#233142"/><path d="M148 87 L173 98 L148 109Z" fill="#ffb000"/><path d="M82 103 C53 87 45 128 83 132Z" fill="#3f83c5"/><path d="M96 140 L88 154 M118 141 L126 154" stroke="#8b5e34" stroke-width="6" stroke-linecap="round"/>`;
+  }
+  if (word === "fish") {
+    return `<path d="M54 104 C84 62 139 67 164 104 C139 141 84 146 54 104Z" fill="#35b7ff"/><path d="M164 104 L190 78 L190 130Z" fill="#1d8fd1"/><circle cx="83" cy="95" r="7" fill="#233142"/><path d="M108 76 C116 88 116 120 108 132" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/><path d="M121 78 C130 91 130 117 121 130" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/>`;
+  }
+  if (word === "apple") {
+    return `<path d="M108 69 C142 45 171 75 161 113 C151 153 125 154 108 141 C91 154 65 153 55 113 C45 75 74 45 108 69Z" fill="#ef4444"/><path d="M111 68 C111 50 120 39 136 34" fill="none" stroke="#2f7d32" stroke-width="8" stroke-linecap="round"/><path d="M132 43 C149 43 157 55 153 68 C137 70 128 60 132 43Z" fill="#54c45e"/><circle cx="86" cy="91" r="10" fill="#fff" opacity=".35"/>`;
+  }
+  if (word === "banana") {
+    return `<path d="M59 77 C96 132 143 137 166 89 C151 151 82 158 47 96Z" fill="#facc15"/><path d="M59 77 C93 120 135 127 166 89" fill="none" stroke="#fff2a8" stroke-width="13" stroke-linecap="round"/><circle cx="54" cy="82" r="7" fill="#8b5e34"/><circle cx="168" cy="88" r="7" fill="#8b5e34"/>`;
+  }
+  if (colorMap[word]) {
+    const stroke = word === "white" ? "#cbd5e1" : colorMap[word];
+    return `<rect x="60" y="55" width="96" height="96" rx="18" fill="${colorMap[word]}" stroke="${stroke}" stroke-width="6"/><circle cx="86" cy="81" r="12" fill="#fff" opacity=".28"/><path d="M76 128 H140" stroke="#fff" stroke-width="10" stroke-linecap="round" opacity=".42"/>`;
+  }
+  if (themeId === "animals") {
+    return `<ellipse cx="108" cy="105" rx="50" ry="44" fill="${accent}"/><circle cx="89" cy="97" r="7" fill="#233142"/><circle cx="127" cy="97" r="7" fill="#233142"/><path d="M91 123 Q108 136 125 123" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/><circle cx="72" cy="67" r="18" fill="${warm}"/><circle cx="144" cy="67" r="18" fill="${warm}"/>`;
+  }
+  if (themeId === "fruits" || themeId === "food") {
+    return `<circle cx="108" cy="100" r="50" fill="${accent}"/><path d="M111 65 C113 47 124 38 140 34" fill="none" stroke="#2f7d32" stroke-width="8" stroke-linecap="round"/><path d="M135 45 C151 46 158 57 154 69 C139 70 131 60 135 45Z" fill="#54c45e"/><circle cx="89" cy="84" r="10" fill="#fff" opacity=".35"/>`;
+  }
+  if (themeId === "transport") {
+    return `<rect x="50" y="83" width="116" height="46" rx="14" fill="${accent}"/><rect x="74" y="64" width="60" height="28" rx="10" fill="${warm}"/><circle cx="78" cy="132" r="13" fill="#233142"/><circle cx="138" cy="132" r="13" fill="#233142"/><circle cx="78" cy="132" r="5" fill="#fff"/><circle cx="138" cy="132" r="5" fill="#fff"/>`;
+  }
+  const shape = index % 3;
+  if (shape === 1) {
+    return `<rect x="58" y="48" width="100" height="90" rx="26" fill="${accent}"/><path d="M80 61 L108 28 L136 61" fill="${warm}"/><circle cx="108" cy="94" r="21" fill="#fff"/><text x="108" y="104" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" font-weight="900" fill="#233142">${initial}</text>`;
+  }
+  return `<circle cx="108" cy="92" r="48" fill="${accent}"/><circle cx="91" cy="79" r="8" fill="#fff"/><circle cx="125" cy="79" r="8" fill="#fff"/><path d="M86 112 Q108 132 130 112" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round"/><text x="108" y="105" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" font-weight="900" fill="#233142">${initial}</text>`;
 }
 
 function exampleFor(themeId, word) {
@@ -572,10 +713,20 @@ function normalizeProfile(ageBand, profile) {
     rounds: Array.isArray(profile.rounds) ? profile.rounds.slice(-20) : [],
     soundEnabled: typeof profile.soundEnabled === "boolean" ? profile.soundEnabled : true,
     badges: Array.isArray(profile.badges) ? profile.badges : [],
+    selectedMascot: mascotOptions.some((mascot) => mascot.id === profile.selectedMascot)
+      ? profile.selectedMascot
+      : initial.selectedMascot,
+    stars: Number.isFinite(profile.stars) ? Math.max(0, profile.stars) : initial.stars,
+    stickers: Array.isArray(profile.stickers) ? unique(profile.stickers) : initial.stickers,
+    mapFragments: Number.isFinite(profile.mapFragments) ? Math.max(0, profile.mapFragments) : initial.mapFragments,
+    completedMissions: Number.isFinite(profile.completedMissions)
+      ? Math.max(0, profile.completedMissions)
+      : initial.completedMissions,
   };
 
   for (const wordId of normalized.unlockedWordIds) {
     if (!normalized.wordStats[wordId]) normalized.wordStats[wordId] = createWordStats();
+    normalized.wordStats[wordId] = normalizeWordStats(normalized.wordStats[wordId]);
   }
 
   return normalized;
@@ -594,6 +745,9 @@ function createProfile(ageBand) {
         wrong: 0,
         lastSeenAt: null,
         unlockedAt: now,
+        correctStreak: 0,
+        nextReviewAt: null,
+        lastResult: null,
       },
     ]),
   );
@@ -605,6 +759,11 @@ function createProfile(ageBand) {
     rounds: [],
     soundEnabled: true,
     badges: [],
+    selectedMascot: mascotOptions[0].id,
+    stars: 0,
+    stickers: [],
+    mapFragments: 0,
+    completedMissions: 0,
   };
 }
 
@@ -616,6 +775,25 @@ function createWordStats() {
     wrong: 0,
     lastSeenAt: null,
     unlockedAt: new Date().toISOString(),
+    correctStreak: 0,
+    nextReviewAt: null,
+    lastResult: null,
+  };
+}
+
+function normalizeWordStats(stats) {
+  const fallback = createWordStats();
+  const attempts = Math.max(0, Number(stats.attempts) || 0);
+  return {
+    mastery: clampNumber(stats.mastery, 0, 5, fallback.mastery),
+    attempts,
+    correct: Math.max(0, Number(stats.correct) || 0),
+    wrong: Math.max(0, Number(stats.wrong) || 0),
+    lastSeenAt: typeof stats.lastSeenAt === "string" ? stats.lastSeenAt : null,
+    unlockedAt: typeof stats.unlockedAt === "string" ? stats.unlockedAt : fallback.unlockedAt,
+    correctStreak: Math.max(0, Number(stats.correctStreak) || 0),
+    nextReviewAt: attempts > 0 && typeof stats.nextReviewAt === "string" ? stats.nextReviewAt : null,
+    lastResult: stats.lastResult === "correct" || stats.lastResult === "wrong" ? stats.lastResult : null,
   };
 }
 
@@ -711,15 +889,21 @@ function recordAnswer(wordId, isCorrect) {
   if (!profile.wordStats[wordId]) profile.wordStats[wordId] = createWordStats();
 
   const stats = profile.wordStats[wordId];
+  const now = new Date();
   stats.attempts += 1;
-  stats.lastSeenAt = new Date().toISOString();
+  stats.lastSeenAt = now.toISOString();
+  stats.lastResult = isCorrect ? "correct" : "wrong";
 
   if (isCorrect) {
     stats.correct += 1;
+    stats.correctStreak += 1;
     stats.mastery = Math.min(5, stats.mastery + 1);
+    stats.nextReviewAt = nextReviewDateFor(stats).toISOString();
   } else {
     stats.wrong += 1;
+    stats.correctStreak = 0;
     stats.mastery = Math.max(0, stats.mastery - 1);
+    stats.nextReviewAt = addMinutes(now, 5).toISOString();
   }
 
   const today = getTodayActivity(profile);
@@ -737,7 +921,7 @@ function recordAnswer(wordId, isCorrect) {
 
 function recordRound(mode, correct, total, wrongWordIds) {
   const profile = getProfile();
-  if (!profile) return [];
+  if (!profile) return { unlocked: [], rewards: createRoundRewards(0, 0, 0) };
   profile.rounds.push({
     date: todayKey(),
     mode,
@@ -747,10 +931,11 @@ function recordRound(mode, correct, total, wrongWordIds) {
   });
   profile.rounds = profile.rounds.slice(-20);
 
+  const rewards = awardMissionRewards(profile, correct, total);
   awardBadges(profile);
   const unlocked = maybeUnlockWords(profile);
   saveState();
-  return unlocked;
+  return { unlocked, rewards };
 }
 
 function maybeUnlockWords(profile) {
@@ -794,6 +979,28 @@ function awardBadges(profile) {
   profile.badges = unique([...profile.badges, ...candidates]);
 }
 
+function awardMissionRewards(profile, correct, total) {
+  const accuracy = total ? correct / total : 0;
+  const starCount = accuracy >= 0.9 ? 3 : accuracy >= 0.7 ? 2 : accuracy >= 0.5 ? 1 : 0;
+  const sticker = starCount >= 2 ? stickerCatalog[profile.completedMissions % stickerCatalog.length] : null;
+  const mapFragments = starCount >= 2 ? 1 : 0;
+
+  profile.completedMissions += 1;
+  profile.stars += starCount;
+  profile.mapFragments += mapFragments;
+  if (sticker) profile.stickers = unique([...profile.stickers, sticker]);
+
+  return createRoundRewards(starCount, mapFragments, sticker);
+}
+
+function createRoundRewards(stars, mapFragments, sticker) {
+  return {
+    stars,
+    mapFragments,
+    sticker,
+  };
+}
+
 function toggleSound() {
   const profile = getProfile();
   if (!profile) return;
@@ -810,8 +1017,7 @@ function moveLearn(offset) {
 }
 
 function startQuiz(mode) {
-  const ageConfig = getAgeConfig();
-  const actualMode = mode === "spell" && ageConfig.spelling === "none" ? "picture" : mode;
+  const actualMode = mode || "adventure";
   const words = selectRoundWords(actualMode);
   if (!words.length) return;
   const questions = words.map((word) => createQuestion(word, actualMode));
@@ -824,9 +1030,11 @@ function startQuiz(mode) {
     selectedValue: null,
     typedAnswer: "",
     builtAnswer: "",
+    hintsUsed: 0,
     correctCount: 0,
     wrongWordIds: [],
     unlockedWords: [],
+    rewards: createRoundRewards(0, 0, null),
     completed: false,
   };
   currentView = "quiz";
@@ -864,8 +1072,7 @@ function selectRoundWords(mode) {
 }
 
 function createQuestion(word, mode) {
-  const playableModes = mode === "review" ? ["picture", "listen", "match", getAgeConfig().spelling === "none" ? "picture" : "spell"] : [mode];
-  const finalMode = playableModes[Math.floor(Math.random() * playableModes.length)];
+  const finalMode = resolveQuestionMode(word, mode);
 
   if (finalMode === "listen") {
     return {
@@ -873,7 +1080,7 @@ function createQuestion(word, mode) {
       word,
       title: "听发音，选择对应图案",
       prompt: "点播放，再选择你听到的单词",
-      options: makeOptions(word, "symbol"),
+      options: makeOptions(word, "image"),
       answer: word.id,
     };
   }
@@ -892,9 +1099,22 @@ function createQuestion(word, mode) {
   if (finalMode === "spell") {
     return {
       mode: "spell",
+      variant: "guided",
       word,
-      title: "拼写单词",
-      prompt: `${word.symbol} ${word.meaning}`,
+      title: "字母拼搭",
+      prompt: `${word.meaning}`,
+      answer: cleanWord(word.word),
+      letters: shuffle(cleanWord(word.word).split("")),
+    };
+  }
+
+  if (finalMode === "full-spell") {
+    return {
+      mode: "spell",
+      variant: "full",
+      word,
+      title: "完整拼写",
+      prompt: `${word.meaning}`,
       answer: cleanWord(word.word),
       letters: shuffle(cleanWord(word.word).split("")),
     };
@@ -904,13 +1124,34 @@ function createQuestion(word, mode) {
     mode: "picture",
     word,
     title: "看图选词",
-    prompt: word.symbol,
+    prompt: word.image,
     options: makeOptions(word, "word"),
     answer: word.id,
   };
 }
 
+function resolveQuestionMode(word, mode) {
+  if (mode === "spell") return "spell";
+  if (mode === "full-spell") return "full-spell";
+  if (mode === "adventure" || mode === "review") {
+    const ageConfig = getAgeConfig();
+    const stats = getProfile()?.wordStats[word.id] || createWordStats();
+    const baseModes = ["picture", "listen", "match", "spell"];
+    const shouldUseFull =
+      word.spellingLevel === "full" ||
+      stats.mastery >= 2 ||
+      ageConfig.hintLevel !== "strong" ||
+      Math.random() < ageConfig.challengeRatio;
+    if (shouldUseFull) baseModes.push("full-spell");
+    const reviewBoost = mode === "review" || stats.lastResult === "wrong" || stats.mastery <= 2;
+    const pool = reviewBoost ? [...baseModes, "listen", "spell"] : baseModes;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+  return mode;
+}
+
 function makeOptions(correctWord, type) {
+  const optionCount = getAgeConfig().optionCount || 4;
   const candidates = getEligibleWords(appState.selectedAgeBand)
     .filter((word) => word.id !== correctWord.id)
     .sort((a, b) => {
@@ -921,12 +1162,13 @@ function makeOptions(correctWord, type) {
     })
     .slice(0, 18);
 
-  const distractors = shuffle(candidates).slice(0, 3);
+  const distractors = shuffle(candidates).slice(0, optionCount - 1);
   return shuffle([correctWord, ...distractors]).map((word) => ({
     id: word.id,
     value: word.id,
-    label: type === "symbol" ? word.symbol : type === "meaning" ? word.meaning : word.word,
-    subLabel: type === "symbol" ? word.meaning : themeMap[word.themeId].shortName,
+    label: type === "image" ? word.meaning : type === "meaning" ? word.meaning : word.word,
+    image: word.image,
+    subLabel: type === "image" ? themeMap[word.themeId].shortName : themeMap[word.themeId].shortName,
   }));
 }
 
@@ -959,11 +1201,21 @@ function clearLetters() {
   render();
 }
 
+function hintLetter() {
+  const question = getCurrentQuestion();
+  if (!question || activeQuiz.answered || question.mode !== "spell") return;
+  const cleanBuilt = cleanWord(activeQuiz.builtAnswer);
+  const nextLetter = question.answer[cleanBuilt.length];
+  if (!nextLetter) return;
+  activeQuiz.builtAnswer = `${cleanBuilt}${nextLetter}`;
+  activeQuiz.hintsUsed = (activeQuiz.hintsUsed || 0) + 1;
+  render();
+}
+
 function submitSpelling() {
   const question = getCurrentQuestion();
   if (!question || activeQuiz.answered || question.mode !== "spell") return;
-  const ageConfig = getAgeConfig();
-  const answer = ageConfig.spelling === "full" ? activeQuiz.typedAnswer : activeQuiz.builtAnswer;
+  const answer = question.variant === "full" ? activeQuiz.typedAnswer || activeQuiz.builtAnswer : activeQuiz.builtAnswer;
   const isCorrect = cleanWord(answer) === question.answer;
   finishQuestion(isCorrect, answer);
 }
@@ -999,6 +1251,7 @@ function nextQuestion() {
   activeQuiz.selectedValue = null;
   activeQuiz.typedAnswer = "";
   activeQuiz.builtAnswer = "";
+  activeQuiz.hintsUsed = 0;
   render();
   scrollToTopSoon();
 
@@ -1011,12 +1264,14 @@ function nextQuestion() {
 function completeQuiz() {
   if (!activeQuiz || activeQuiz.completed) return;
   activeQuiz.completed = true;
-  activeQuiz.unlockedWords = recordRound(
+  const result = recordRound(
     activeQuiz.mode,
     activeQuiz.correctCount,
     activeQuiz.questions.length,
     activeQuiz.wrongWordIds,
   );
+  activeQuiz.unlockedWords = result.unlocked;
+  activeQuiz.rewards = result.rewards;
   playCompleteSound();
   render();
   scrollToTopSoon();
@@ -1031,9 +1286,16 @@ function getReviewWords() {
   const profile = getProfile();
   if (!profile) return [];
   const todayWrong = new Set(getTodayActivity(profile).wrongWordIds);
+  const now = Date.now();
   return getUnlockedWords().filter((word) => {
     const stats = profile.wordStats[word.id] || createWordStats();
-    return todayWrong.has(word.id) || (stats.attempts > 0 && stats.mastery <= 2);
+    const reviewDue = stats.nextReviewAt ? new Date(stats.nextReviewAt).getTime() <= now : false;
+    return (
+      todayWrong.has(word.id) ||
+      stats.lastResult === "wrong" ||
+      reviewDue ||
+      (stats.attempts > 0 && stats.mastery <= 2)
+    );
   });
 }
 
@@ -1049,6 +1311,67 @@ function resetCurrentProgress() {
   saveState();
   render();
   scrollToTopSoon();
+}
+
+function chooseMascot(mascotId) {
+  const profile = getProfile();
+  if (!profile || !mascotOptions.some((mascot) => mascot.id === mascotId)) return;
+  profile.selectedMascot = mascotId;
+  saveState();
+  render();
+}
+
+function startWordReview(wordId) {
+  const word = getUnlockedWords().find((item) => item.id === wordId);
+  if (!word) return;
+  activeQuiz = {
+    mode: "review",
+    questions: [
+      createQuestion(word, "listen"),
+      createQuestion(word, "spell"),
+      createQuestion(word, "full-spell"),
+    ],
+    index: 0,
+    answered: false,
+    selectedValue: null,
+    typedAnswer: "",
+    builtAnswer: "",
+    hintsUsed: 0,
+    correctCount: 0,
+    wrongWordIds: [],
+    unlockedWords: [],
+    rewards: createRoundRewards(0, 0, null),
+    completed: false,
+  };
+  currentView = "quiz";
+  render();
+  scrollToTopSoon();
+  window.setTimeout(() => speakWord(word.word, "quiz"), 120);
+}
+
+function createParentGate() {
+  const a = 2 + Math.floor(Math.random() * 8);
+  const b = 2 + Math.floor(Math.random() * 8);
+  return { a, b, answer: a + b, error: "" };
+}
+
+function checkParentGate() {
+  const input = app.querySelector("[data-parent-answer]");
+  const value = Number(input?.value);
+  if (value === parentGate.answer) {
+    parentVerified = true;
+    parentGate.error = "";
+  } else {
+    parentGate.error = "答案不对，再试一次。";
+  }
+  render();
+}
+
+function nextReviewDateFor(stats) {
+  const now = new Date();
+  if (stats.mastery >= 4) return addDays(now, 7);
+  if (stats.correctStreak >= 2) return addDays(now, 3);
+  return addDays(now, 1);
 }
 
 function scrollToTopSoon() {
@@ -1115,18 +1438,16 @@ function renderAgeGate() {
 
 function renderHeader() {
   const profile = getProfile();
-  const activeWords = getActiveWords();
-  const mastered = profile.unlockedWordIds.filter((id) => profile.wordStats[id]?.mastery >= 4).length;
+  const mascot = getSelectedMascot(profile);
   return `
     <header class="topbar">
       <div class="topbar-title">
         <p class="eyebrow">单词小冒险</p>
-        <h1>今日 10 词</h1>
+        <h1>今日冒险</h1>
       </div>
       <div class="topbar-actions">
+        <span class="status-pill mascot-pill" style="--mascot-color:${mascot.color}">${renderMascotImage(mascot, "mascot-mini")} ${mascot.name}</span>
         <span class="status-pill">${ageLabelMap[appState.selectedAgeBand]}</span>
-        <span class="status-pill">${activeWords.length} 个今日词</span>
-        <span class="status-pill">${mastered} 个已掌握</span>
         <button class="icon-button" data-action="toggle-sound" title="音效开关" aria-label="音效开关">
           ${profile.soundEnabled ? "🔊" : "🔇"}
         </button>
@@ -1140,8 +1461,8 @@ function renderNav() {
   const items = [
     ["home", "⌂", "首页"],
     ["learn", "▣", "学习"],
-    ["practice", "▶", "练习"],
-    ["review", "↺", "复习"],
+    ["practice", "▶", "冒险"],
+    ["review", "↺", "错词"],
     ["parents", "○", "家长"],
   ];
   return `
@@ -1165,26 +1486,47 @@ function renderHome() {
   const activeWords = getActiveWords();
   const reviewWords = getReviewWords();
   const stats = getDashboardStats(profile);
+  const mascot = getSelectedMascot(profile);
+  const starTarget = getAgeConfig().roundSize;
+  const stickerProgress = Math.min(100, Math.round(((profile.stars % 6) / 6) * 100));
   return `
     <div class="dashboard-grid">
       <section class="action-band home-hero-band">
         <div class="home-hero-copy">
-          <span class="home-hero-icon" aria-hidden="true">A</span>
+          ${renderMascotImage(mascot, "home-hero-icon")}
           <div>
-          <h2>今天从这 10 个词开始</h2>
-          <p>系统会把错词和低掌握词排到前面。表现稳定时，会自动解锁 5 个新词。</p>
+            <h2>${mascot.name}的今日冒险</h2>
+            <p>目标：完成 ${starTarget} 个小任务，收集星星和贴纸。系统会自动混合看图、听音、配对和拼写。</p>
           </div>
         </div>
         <div class="action-row action-row-large">
-          <button class="primary-button big-action" data-action="set-view" data-value="learn">先学一遍</button>
-          <button class="secondary-button big-action" data-action="start-quiz" data-value="picture">开始闯关</button>
-          <button class="secondary-button big-action" data-action="set-view" data-value="review">复习错词</button>
+          <button class="primary-button big-action" data-action="start-adventure">开始今日冒险</button>
+          <button class="secondary-button big-action" data-action="set-view" data-value="learn">先看学习卡</button>
+          <button class="secondary-button big-action" data-action="set-view" data-value="review">迷路的小单词</button>
         </div>
       </section>
+      <section class="reward-band">
+        <article class="reward-card">
+          <span>星星目标</span>
+          <strong>${profile.stars} ★</strong>
+          <div class="tile-progress"><span style="width:${Math.min(100, (profile.stars / Math.max(1, starTarget)) * 100)}%"></span></div>
+        </article>
+        <article class="reward-card">
+          <span>贴纸进度</span>
+          <strong>${profile.stickers.length} 张</strong>
+          <div class="tile-progress"><span style="width:${stickerProgress}%"></span></div>
+        </article>
+        <article class="reward-card">
+          <span>地图碎片</span>
+          <strong>${profile.mapFragments} 块</strong>
+          <div class="tile-progress"><span style="width:${Math.min(100, profile.mapFragments * 12)}%"></span></div>
+        </article>
+      </section>
+      ${renderMascotPicker(profile)}
       <section class="summary-band">
         ${renderMetric("开放词", profile.unlockedWordIds.length, `总词库 ${getEligibleWords().length} 个`)}
         ${renderMetric("掌握词", stats.masteredWords, "掌握度达到 4 分")}
-        ${renderMetric("待复习", reviewWords.length, reviewWords.length > 8 ? "先稳住复习" : "节奏很好")}
+        ${renderMetric("迷路词", reviewWords.length, reviewWords.length > 8 ? "先稳住复习" : "节奏很好")}
         ${renderMetric("最近正确率", `${stats.recentAccuracy}%`, "最近两轮表现")}
       </section>
     </div>
@@ -1214,18 +1556,25 @@ function renderLearn() {
   return `
     <section class="learn-layout">
       <article class="word-card" style="--theme-color:${theme.color}">
-        <div class="word-symbol">${word.symbol}</div>
+        ${renderWordImage(word, "word-symbol")}
         <div class="word-content">
           <span class="theme-chip">${theme.name}</span>
           <h2>${escapeHtml(word.word)}</h2>
           <p class="meaning">${escapeHtml(word.meaning)}</p>
+          <div class="phonics-row">
+            <span>${escapeHtml(word.phonics)}</span>
+            ${word.ipa && appState.selectedAgeBand !== "preschool" ? `<small>${escapeHtml(word.ipa)}</small>` : ""}
+          </div>
           <p class="example">${escapeHtml(word.example)}</p>
           <div class="mastery-row">
             ${renderStars(stats.mastery)}
             <span>掌握度 ${stats.mastery}/5</span>
           </div>
         </div>
-        <button class="sound-button" data-action="speak-word" data-clarity="clear" data-value="${escapeAttr(word.word)}">清晰发音</button>
+        <div class="sound-actions">
+          <button class="sound-button" data-action="speak-word" data-clarity="learn" data-value="${escapeAttr(word.word)}">慢速听两遍</button>
+          <button class="secondary-button" data-action="speak-segments" data-value="${escapeAttr(word.id)}">分段发音</button>
+        </div>
       </article>
       <div class="learn-controls">
         <button class="secondary-button step-button" data-action="learn-prev" aria-label="上一张">
@@ -1245,33 +1594,45 @@ function renderLearn() {
 function renderPractice() {
   const ageConfig = getAgeConfig();
   const modes = [
-    ["picture", "◆", "看图选词", "看到图像后，从 4 个英文选项中选出正确单词。"],
-    ["listen", "♪", "听音选图", "先听英文发音，再选择对应图案。"],
-    ["match", "中", "英中配对", "看到英文单词，选择正确中文意思。"],
-    ["spell", "Aa", "拼写单词", ageConfig.spelling === "none" ? "这个年龄段先不开放拼写。" : "根据图像和中文提示拼出英文。"],
+    ["picture", "◆", "看图选词", `${ageConfig.optionCount} 选 1`],
+    ["listen", "♪", "听音选图", "先听英文发音，再选择对应插画。"],
+    ["match", "中", "英中配对", "英文和中文配一配。"],
+    ["spell", "Aa", "字母拼搭", "点字母块拼出来。"],
+    ["full-spell", "Ab", "完整拼写", "输入或点字母辅助。"],
   ];
 
   return `
-    <section class="section-block">
+    <section class="section-block practice-panel">
       <div class="section-heading">
-        <h2>选择练习</h2>
-        <p>${ageConfig.label} 每轮 ${ageConfig.roundSize} 题，答题后会立刻反馈对错和音效。</p>
+        <h2>冒险任务</h2>
+        <p>${ageConfig.label} · 每轮 ${ageConfig.roundSize} 题 · 自动混合任务</p>
       </div>
-      <div class="mode-grid">
+      <button class="daily-mission-card" data-action="start-adventure">
+        <span class="daily-mission-icon" aria-hidden="true">★</span>
+        <span>
+          <strong>今日冒险</strong>
+          <small>看图、听音、配对、拼搭、完整拼写一起练</small>
+        </span>
+        <em>开始</em>
+      </button>
+      <div class="section-heading compact-heading">
+        <h3>单项练习</h3>
+        <p>想单独加强某一项时再选。</p>
+      </div>
+      <div class="mode-grid compact-mode-grid">
         ${modes
-          .map(([id, icon, title, detail]) => {
-            const disabled = id === "spell" && ageConfig.spelling === "none";
-            return `
-              <button class="mode-card mode-button ${disabled ? "is-disabled" : ""}" data-action="start-quiz" data-value="${id}" ${disabled ? "disabled" : ""}>
+          .map(
+            ([id, icon, title, detail]) => `
+              <button class="mode-card mode-button" data-action="start-quiz" data-value="${id}">
                 <span class="mode-icon" aria-hidden="true">${icon}</span>
                 <span class="mode-text">
                   <strong>${title}</strong>
                   <small>${detail}</small>
                 </span>
-                <span class="mode-cta">${disabled ? "稍后开放" : "开始"}</span>
+                <span class="mode-cta" aria-hidden="true">›</span>
               </button>
-            `;
-          })
+            `,
+          )
           .join("")}
       </div>
     </section>
@@ -1281,38 +1642,45 @@ function renderPractice() {
 function renderReview() {
   const reviewWords = getReviewWords();
   if (!reviewWords.length) {
-    return renderEmptyState("今天暂时没有错词", "可以继续做一轮练习，系统会把需要巩固的词自动放进这里。", "继续练习", "practice");
+    return renderEmptyState("没有迷路的小单词", "可以继续做今日冒险，系统会把需要巩固的词自动放进这里。", "继续冒险", "practice");
   }
 
   return `
     <section class="section-block">
       <div class="section-heading">
-        <h2>今日复习</h2>
-        <p>这里优先出现答错过或掌握度较低的词。错词超过 8 个时，系统会暂停解锁新词。</p>
+        <h2>迷路的小单词</h2>
+        <p>这里优先出现答错过、到时间复习或掌握度较低的词。错词超过 8 个时，系统会暂停解锁新词。</p>
       </div>
       <div class="review-list">
         ${reviewWords.map(renderReviewWord).join("")}
       </div>
-      <button class="primary-button" data-action="start-review">开始复习</button>
+      <button class="primary-button big-action" data-action="start-review">帮它们回家</button>
     </section>
   `;
 }
 
 function renderParents() {
+  if (!parentVerified) return renderParentGate();
   const profile = getProfile();
   const stats = getDashboardStats(profile);
   const weakThemes = getWeakThemes(profile);
+  const reviewWords = getReviewWords();
   return `
     <section class="parent-layout">
       <div class="section-heading">
         <h2>家长视图</h2>
-        <p>进度只保存在当前浏览器，切换年龄段后会使用独立进度。</p>
+        <p>进度只保存在当前浏览器，切换年龄段后会使用独立进度。儿童端不会直接显示重置入口。</p>
       </div>
       <section class="summary-band">
         ${renderMetric("当前开放", profile.unlockedWordIds.length, "初始 10 个，逐步增加")}
         ${renderMetric("已掌握", stats.masteredWords, "掌握度 4 分以上")}
-        ${renderMetric("待复习", getReviewWords().length, "建议优先处理")}
+        ${renderMetric("待复习", reviewWords.length, "建议优先处理")}
         ${renderMetric("连续天数", stats.streak, "有答题记录即计入")}
+      </section>
+      <section class="reward-band">
+        ${renderMetric("星星", profile.stars, "完成任务获得")}
+        ${renderMetric("贴纸", profile.stickers.length, profile.stickers.slice(-2).join("、") || "还未获得")}
+        ${renderMetric("地图碎片", profile.mapFragments, "完成高质量关卡获得")}
       </section>
       <section class="parent-grid">
         <article class="info-panel">
@@ -1336,6 +1704,7 @@ function renderParents() {
           <h3>学习策略</h3>
           <p>最近两轮正确率达到 80%，且今日错词少于 3 个时，自动解锁 5 个新词。</p>
           <p>低掌握度词超过 8 个时，系统会暂停新词，先把复习比例提高。</p>
+          <p>${reviewWords.length ? `本次建议先复习 ${reviewWords.slice(0, 3).map((word) => word.word).join("、")}。` : "今天可以继续做一轮今日冒险。"}</p>
         </article>
       </section>
       <div class="danger-zone">
@@ -1383,7 +1752,7 @@ function renderQuestionPrompt(question) {
     return `
       <div class="question-prompt">
         <p class="quiz-title">${question.title}</p>
-        <div class="quiz-symbol">${question.prompt}</div>
+        ${renderWordImage(question.word, "quiz-symbol")}
         <p class="quiz-hint">这张图片对应哪个英文单词？</p>
       </div>
     `;
@@ -1412,8 +1781,8 @@ function renderQuestionPrompt(question) {
   return `
     <div class="question-prompt">
       <p class="quiz-title">${question.title}</p>
-      <div class="quiz-symbol">${question.word.symbol}</div>
-      <p class="quiz-hint">${escapeHtml(question.word.meaning)} · ${escapeHtml(question.word.example)}</p>
+      ${renderWordImage(question.word, "quiz-symbol")}
+      <p class="quiz-hint">${escapeHtml(question.word.meaning)} · ${escapeHtml(question.word.phonics)}</p>
     </div>
   `;
 }
@@ -1425,6 +1794,7 @@ function renderAnswerOption(option, question) {
   const stateClass = answered && isCorrect ? "is-correct" : answered && isSelected ? "is-wrong" : "";
   return `
     <button class="answer-option ${stateClass}" data-action="answer-choice" data-value="${escapeAttr(option.value)}" ${answered ? "disabled" : ""}>
+      ${question.mode === "listen" ? renderOptionImage(option) : ""}
       <strong>${escapeHtml(option.label)}</strong>
       <span>${escapeHtml(option.subLabel)}</span>
     </button>
@@ -1433,18 +1803,16 @@ function renderAnswerOption(option, question) {
 
 function renderSpellQuestion(question) {
   const ageConfig = getAgeConfig();
-  if (ageConfig.spelling === "full") {
-    return `
-      <div class="spell-panel">
-        <input class="spell-input" data-spell-input autocomplete="off" autocapitalize="none" spellcheck="false" value="${escapeAttr(activeQuiz.typedAnswer)}" placeholder="输入英文单词" ${activeQuiz.answered ? "disabled" : ""} />
-        <button class="primary-button" data-action="submit-spell" ${activeQuiz.answered ? "disabled" : ""}>提交</button>
-      </div>
-    `;
-  }
+  const full = question.variant === "full";
+  const placeholder =
+    ageConfig.hintLevel === "strong"
+      ? `${question.word.word.slice(0, 1)}${" · ".repeat(Math.max(0, question.answer.length - 1))}`
+      : "输入英文单词";
 
   return `
-    <div class="spell-panel">
-      <div class="built-word">${activeQuiz.builtAnswer || "点下面字母拼单词"}</div>
+    <div class="spell-panel ${full ? "is-full" : "is-guided"}">
+      ${full ? `<input class="spell-input" data-spell-input autocomplete="off" autocapitalize="none" spellcheck="false" value="${escapeAttr(activeQuiz.typedAnswer)}" placeholder="${escapeAttr(placeholder)}" ${activeQuiz.answered ? "disabled" : ""} />` : ""}
+      ${renderBuiltWord(question)}
       <div class="letter-bank">
         ${question.letters
           .map(
@@ -1455,6 +1823,7 @@ function renderSpellQuestion(question) {
           .join("")}
       </div>
       <div class="action-row">
+        <button class="secondary-button" data-action="hint-letter" ${activeQuiz.answered ? "disabled" : ""}>提示一个字母</button>
         <button class="secondary-button" data-action="letter-backspace" ${activeQuiz.answered ? "disabled" : ""}>退格</button>
         <button class="secondary-button" data-action="letter-clear" ${activeQuiz.answered ? "disabled" : ""}>清空</button>
         <button class="primary-button" data-action="submit-spell" ${activeQuiz.answered ? "disabled" : ""}>提交</button>
@@ -1472,8 +1841,14 @@ function renderFeedback(question) {
   return `
     <div class="feedback ${isCorrect ? "is-good" : "is-bad"}" role="status" aria-live="polite">
       <span class="feedback-mark" aria-hidden="true">${isCorrect ? "✓" : "↺"}</span>
-      <strong>${isCorrect ? "答对啦" : "记住这一题"}</strong>
+      <strong>${isCorrect ? "答对啦，收集一颗星" : "这个单词迷路了"}</strong>
+      ${isCorrect ? `<div class="feedback-stars" aria-hidden="true"><span>★</span><span>★</span><span>★</span></div>` : ""}
       <span class="feedback-answer">正确答案：${escapeHtml(question.word.word)} · ${escapeHtml(question.word.meaning)}</span>
+      ${
+        isCorrect
+          ? ""
+          : `<button class="secondary-button" data-action="speak-word" data-clarity="clear" data-value="${escapeAttr(question.word.word)}">再听一次</button>`
+      }
       <button class="primary-button" data-action="next-question">${activeQuiz.index >= activeQuiz.questions.length - 1 ? "看结果" : "下一题"}</button>
     </div>
   `;
@@ -1483,11 +1858,17 @@ function renderQuizSummary() {
   const total = activeQuiz.questions.length;
   const accuracy = Math.round((activeQuiz.correctCount / total) * 100);
   const stars = accuracy >= 90 ? 3 : accuracy >= 70 ? 2 : accuracy >= 50 ? 1 : 0;
+  const rewards = activeQuiz.rewards || createRoundRewards(stars, 0, null);
   return `
     <section class="result-view">
       <div class="result-stars">${"★".repeat(stars)}${"☆".repeat(3 - stars)}</div>
       <h2>本轮完成</h2>
       <p>答对 ${activeQuiz.correctCount} / ${total} 题，正确率 ${accuracy}%</p>
+      <div class="reward-summary">
+        <span>+${rewards.stars} 星星</span>
+        <span>+${rewards.mapFragments} 地图碎片</span>
+        <span>${rewards.sticker ? `新贴纸：${rewards.sticker}` : "贴纸还差一点"}</span>
+      </div>
       ${
         activeQuiz.unlockedWords.length
           ? `<div class="unlock-box"><strong>新解锁 ${activeQuiz.unlockedWords.length} 个词</strong><span>${activeQuiz.unlockedWords
@@ -1497,7 +1878,8 @@ function renderQuizSummary() {
       }
       <div class="action-row">
         <button class="primary-button" data-action="set-view" data-value="home">回首页</button>
-        <button class="secondary-button" data-action="set-view" data-value="review">看复习</button>
+        <button class="secondary-button" data-action="start-adventure">再来一轮</button>
+        <button class="secondary-button" data-action="set-view" data-value="review">看错题本</button>
       </div>
     </section>
   `;
@@ -1517,7 +1899,7 @@ function renderMiniWord(word) {
   const stats = getProfile().wordStats[word.id] || createWordStats();
   return `
     <article class="mini-word">
-      <span>${word.symbol}</span>
+      ${renderWordImage(word, "mini-word-image")}
       <strong>${escapeHtml(word.word)}</strong>
       <small>${escapeHtml(word.meaning)} · ${levelLabels[word.level]} · ${stats.mastery}/5</small>
     </article>
@@ -1547,12 +1929,15 @@ function renderReviewWord(word) {
   const stats = getProfile().wordStats[word.id] || createWordStats();
   return `
     <article class="review-word">
-      <span>${word.symbol}</span>
+      ${renderWordImage(word, "review-word-image")}
       <div>
         <strong>${escapeHtml(word.word)}</strong>
-        <small>${escapeHtml(word.meaning)} · 掌握度 ${stats.mastery}/5 · 错 ${stats.wrong} 次</small>
+        <small>${escapeHtml(word.meaning)} · 掌握度 ${stats.mastery}/5 · 错 ${stats.wrong} 次 · ${formatReviewTime(stats.nextReviewAt)}</small>
       </div>
-      <button class="small-link" data-action="speak-word" data-clarity="clear" data-value="${escapeAttr(word.word)}">发音</button>
+      <div class="review-actions">
+        <button class="small-link" data-action="speak-word" data-clarity="clear" data-value="${escapeAttr(word.word)}">发音</button>
+        <button class="small-link" data-action="start-word-review" data-value="${escapeAttr(word.id)}">再练</button>
+      </div>
     </article>
   `;
 }
@@ -1573,6 +1958,97 @@ function renderEmptyState(title, detail, buttonLabel, view) {
   `;
 }
 
+function renderMascotPicker(profile) {
+  return `
+    <section class="mascot-strip" aria-label="选择冒险伙伴">
+      <span>冒险伙伴</span>
+      ${mascotOptions
+        .map(
+          (mascot) => `
+            <button class="${profile.selectedMascot === mascot.id ? "is-active" : ""}" style="--mascot-color:${mascot.color}" data-action="choose-mascot" data-value="${mascot.id}">
+              ${renderMascotImage(mascot, "mascot-choice-image")}
+              <small>${mascot.name}</small>
+            </button>
+          `,
+        )
+        .join("")}
+    </section>
+  `;
+}
+
+function renderParentGate() {
+  return `
+    <section class="parent-gate">
+      <div class="empty-mark">家</div>
+      <h2>家长中心</h2>
+      <p>请先完成一道小算术，避免孩子误触重置或切换年龄段。</p>
+      <label class="parent-question">
+        <span>${parentGate.a} + ${parentGate.b} = ?</span>
+        <input data-parent-answer inputmode="numeric" autocomplete="off" />
+      </label>
+      ${parentGate.error ? `<p class="gate-error">${parentGate.error}</p>` : ""}
+      <div class="action-row">
+        <button class="primary-button" data-action="check-parent">进入家长中心</button>
+        <button class="secondary-button" data-action="refresh-parent-gate">换一道题</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderWordImage(word, className) {
+  return `
+    <figure class="${className} word-art">
+      <img src="${escapeAttr(word.image)}" alt="${escapeAttr(word.meaning)}" loading="lazy" />
+      <figcaption>${escapeHtml(word.word.slice(0, 1).toUpperCase())}</figcaption>
+    </figure>
+  `;
+}
+
+function renderMascotImage(mascot, className) {
+  return `
+    <span class="${className} mascot-art" style="--mascot-color:${mascot.color}">
+      ${mascotSvg(mascot.id)}
+    </span>
+  `;
+}
+
+function mascotSvg(id) {
+  if (id === "bear") {
+    return `<svg viewBox="0 0 80 80" aria-hidden="true"><circle cx="23" cy="22" r="13" fill="#8b5e34"/><circle cx="57" cy="22" r="13" fill="#8b5e34"/><circle cx="40" cy="42" r="29" fill="#a86f3d"/><circle cx="30" cy="37" r="4" fill="#233142"/><circle cx="50" cy="37" r="4" fill="#233142"/><ellipse cx="40" cy="50" rx="13" ry="10" fill="#f8dfbf"/><circle cx="40" cy="47" r="4" fill="#233142"/></svg>`;
+  }
+  if (id === "owl") {
+    return `<svg viewBox="0 0 80 80" aria-hidden="true"><path d="M18 19 L31 25 L40 15 L49 25 L62 19 L60 50 C58 66 48 72 40 72 C32 72 22 66 20 50Z" fill="#6d5dfc"/><circle cx="31" cy="39" r="12" fill="#fff"/><circle cx="49" cy="39" r="12" fill="#fff"/><circle cx="31" cy="39" r="5" fill="#233142"/><circle cx="49" cy="39" r="5" fill="#233142"/><path d="M36 52 L44 52 L40 59Z" fill="#ffb000"/></svg>`;
+  }
+  return `<svg viewBox="0 0 80 80" aria-hidden="true"><path d="M17 27 L25 10 L35 25 Q40 21 45 25 L55 10 L63 27 C70 49 58 70 40 70 C22 70 10 49 17 27Z" fill="#f97316"/><path d="M24 29 L31 17 L35 31Z" fill="#fff3d7"/><path d="M56 29 L49 17 L45 31Z" fill="#fff3d7"/><circle cx="31" cy="41" r="4" fill="#233142"/><circle cx="49" cy="41" r="4" fill="#233142"/><path d="M34 51 Q40 58 46 51" fill="none" stroke="#233142" stroke-width="4" stroke-linecap="round"/><path d="M40 46 L45 50 L35 50Z" fill="#233142"/></svg>`;
+}
+
+function renderOptionImage(option) {
+  return `
+    <span class="option-image word-art">
+      <img src="${escapeAttr(option.image)}" alt="" loading="lazy" />
+    </span>
+  `;
+}
+
+function renderBuiltWord(question) {
+  const built = activeQuiz.builtAnswer || "";
+  const display = built || (question.variant === "full" ? "也可以点下面字母辅助" : "点下面字母拼单词");
+  if (!activeQuiz.answered || !built) {
+    return `<div class="built-word">${escapeHtml(display)}</div>`;
+  }
+  const letters = cleanWord(built).split("");
+  return `
+    <div class="built-word has-letter-feedback">
+      ${letters
+        .map((letter, index) => {
+          const state = question.answer[index] === letter ? "is-right" : "is-miss";
+          return `<span class="${state}">${escapeHtml(letter)}</span>`;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
 function getDashboardStats(profile) {
   const unlockedStats = profile.unlockedWordIds.map((id) => profile.wordStats[id] || createWordStats());
   const masteredWords = unlockedStats.filter((stats) => stats.mastery >= 4).length;
@@ -1585,6 +2061,21 @@ function getDashboardStats(profile) {
     recentAccuracy,
     streak: getLearningStreak(profile),
   };
+}
+
+function getSelectedMascot(profile = getProfile()) {
+  return mascotOptions.find((mascot) => mascot.id === profile?.selectedMascot) || mascotOptions[0];
+}
+
+function formatReviewTime(value) {
+  if (!value) return "今天复习";
+  const diff = new Date(value).getTime() - Date.now();
+  if (diff <= 0) return "现在复习";
+  const minutes = Math.ceil(diff / 60000);
+  if (minutes < 60) return `${minutes} 分钟后`;
+  const hours = Math.ceil(minutes / 60);
+  if (hours < 24) return `${hours} 小时后`;
+  return `${Math.ceil(hours / 24)} 天后`;
 }
 
 function getWeakThemes(profile) {
@@ -1638,17 +2129,38 @@ function speakWord(text, clarity = "clear") {
   }
 
   window.speechSynthesis.cancel();
-  if (clarity === "clear") {
-    utterance.onend = () => {
-      window.setTimeout(() => {
-        if (sequenceId !== speechSequenceId) return;
-        const repeatUtterance = createSpeechUtterance(speechText, speechRateForAge(clarity), 1);
-        if (preferredEnglishVoice) repeatUtterance.voice = preferredEnglishVoice;
-        window.speechSynthesis.speak(repeatUtterance);
-      }, 650);
-    };
-  }
+  if (clarity === "learn") utterance.onend = () => repeatSpeechOnce(sequenceId, speechText, clarity, 1050);
   window.speechSynthesis.speak(utterance);
+}
+
+function speakWordSegments(wordId) {
+  if (!("speechSynthesis" in window)) return;
+  const word = vocabulary.find((item) => item.id === wordId);
+  if (!word) return;
+  const sequenceId = (speechSequenceId += 1);
+  const parts = [...word.segments, word.word].filter(Boolean);
+  window.speechSynthesis.cancel();
+  speakParts(parts, sequenceId, 0);
+}
+
+function speakParts(parts, sequenceId, index) {
+  if (sequenceId !== speechSequenceId || index >= parts.length) return;
+  const utterance = createSpeechUtterance(prepareSpeechText(parts[index], "segment"), speechRateForAge("segment"), 1);
+  preferredEnglishVoice = preferredEnglishVoice || pickEnglishVoice();
+  if (preferredEnglishVoice) utterance.voice = preferredEnglishVoice;
+  utterance.onend = () => {
+    window.setTimeout(() => speakParts(parts, sequenceId, index + 1), 520);
+  };
+  window.speechSynthesis.speak(utterance);
+}
+
+function repeatSpeechOnce(sequenceId, speechText, clarity, delay) {
+  window.setTimeout(() => {
+    if (sequenceId !== speechSequenceId) return;
+    const repeatUtterance = createSpeechUtterance(speechText, speechRateForAge(clarity), 1);
+    if (preferredEnglishVoice) repeatUtterance.voice = preferredEnglishVoice;
+    window.speechSynthesis.speak(repeatUtterance);
+  }, delay);
 }
 
 function createSpeechUtterance(text, rate, pitch) {
@@ -1670,15 +2182,8 @@ function prepareSpeechText(text, clarity = "clear") {
 }
 
 function speechRateForAge(clarity = "clear") {
-  const age = appState.selectedAgeBand;
-  if (clarity === "quiz") {
-    if (age === "preschool") return 0.6;
-    if (age === "primary") return 0.64;
-    return 0.68;
-  }
-  if (age === "preschool") return 0.52;
-  if (age === "primary") return 0.58;
-  return 0.62;
+  const rates = getAgeConfig().speechRate || ageOptions[1].speechRate;
+  return rates[clarity] || rates.clear;
 }
 
 function pickEnglishVoice() {
@@ -1791,10 +2296,37 @@ function formatDate(date) {
   return `${year}-${month}-${day}`;
 }
 
+function addMinutes(date, minutes) {
+  const next = new Date(date);
+  next.setMinutes(next.getMinutes() + minutes);
+  return next;
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
 function cleanWord(value) {
   return String(value || "")
     .toLowerCase()
     .replace(/[^a-z]/g, "");
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(max, number));
+}
+
+function hashString(value) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(index);
+    hash |= 0;
+  }
+  return hash;
 }
 
 function slugify(value) {
@@ -1834,4 +2366,12 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value);
+}
+
+function escapeSvg(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
