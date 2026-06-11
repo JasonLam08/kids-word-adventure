@@ -10,10 +10,12 @@ export interface WordItem {
   word: string;
   meaning: string;
   symbol: string;
+  image: string;
   example: string;
   ageBands: AgeBand[];
   level: WordLevel;
   spellingLevel: SpellingLevel;
+  rank: number;
 }
 
 export interface WordStats {
@@ -23,6 +25,9 @@ export interface WordStats {
   wrong: number;
   lastSeenAt: string | null;
   unlockedAt: string;
+  correctStreak: number;
+  nextReviewAt: string | null;
+  lastResult: "correct" | "wrong" | null;
 }
 
 export interface DailyActivity {
@@ -48,6 +53,11 @@ export interface ProgressProfile {
   rounds: RoundResult[];
   soundEnabled: boolean;
   badges: string[];
+  selectedMascot: string;
+  stars: number;
+  stickers: string[];
+  mapFragments: number;
+  completedMissions: number;
 }
 
 export interface ProgressState {

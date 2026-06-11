@@ -623,6 +623,9 @@ h3 {
 .word-symbol {
   display: grid;
   place-items: center;
+  justify-self: center;
+  width: 100%;
+  max-width: 340px;
   aspect-ratio: 1;
   border-radius: 8px;
   background: color-mix(in srgb, var(--theme-color) 14%, #fff);
@@ -648,26 +651,6 @@ h3 {
   color: #566273;
   font-size: 20px;
   line-height: 1.6;
-}
-
-.phonics-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
-  color: #244c8f;
-  font-weight: 900;
-}
-
-.phonics-row span,
-.phonics-row small {
-  min-height: 30px;
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 10px;
-  border-radius: 8px;
-  background: #eef5ff;
 }
 
 .mastery-row {
@@ -1400,7 +1383,8 @@ h3 {
   }
 
   .word-symbol {
-    font-size: clamp(86px, 18vw, 142px);
+    width: min(100%, 300px);
+    max-height: none;
   }
 
   .word-content h2 {
@@ -1615,8 +1599,8 @@ h3 {
   }
 
   .word-symbol {
-    max-height: 220px;
-    font-size: clamp(74px, 28vw, 132px);
+    width: min(100%, 250px);
+    max-height: none;
   }
 
   .word-content h2 {
@@ -2211,6 +2195,11 @@ button:active {
     gap: 8px;
   }
 
+  .word-strip,
+  .compact-mode-grid {
+    grid-template-columns: 1fr;
+  }
+
   .reward-card {
     min-height: 92px;
     padding: 10px;
@@ -2234,6 +2223,32 @@ button:active {
 
   .mode-card {
     min-height: 104px;
+  }
+
+  .mini-word {
+    min-height: auto;
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-items: center;
+    gap: 4px 12px;
+    padding: 12px;
+  }
+
+  .mini-word-image {
+    grid-row: 1 / 3;
+    width: 64px;
+    height: 64px;
+  }
+
+  .mini-word strong,
+  .mini-word small {
+    grid-column: 2;
+  }
+
+  .mini-word strong {
+    font-size: 22px;
+    line-height: 1.1;
   }
 
   .mode-button {
@@ -2322,8 +2337,8 @@ button:active {
   }
 
   .learn-layout .word-symbol {
-    max-height: 166px;
-    width: min(100%, 220px);
+    width: min(100%, 240px);
+    max-height: none;
     justify-self: center;
   }
 

@@ -12,7 +12,7 @@ const ageOptions = [
     fullSpelling: true,
     hintLevel: "strong",
     optionCount: 3,
-    speechRate: { learn: 0.5, clear: 0.54, quiz: 0.58, segment: 0.48 },
+    speechRate: { learn: 0.5, clear: 0.54, quiz: 0.58 },
     challengeRatio: 0.08,
   },
   {
@@ -26,7 +26,7 @@ const ageOptions = [
     fullSpelling: true,
     hintLevel: "medium",
     optionCount: 4,
-    speechRate: { learn: 0.56, clear: 0.6, quiz: 0.64, segment: 0.52 },
+    speechRate: { learn: 0.56, clear: 0.6, quiz: 0.64 },
     challengeRatio: 0.16,
   },
   {
@@ -40,7 +40,7 @@ const ageOptions = [
     fullSpelling: true,
     hintLevel: "light",
     optionCount: 4,
-    speechRate: { learn: 0.62, clear: 0.66, quiz: 0.7, segment: 0.58 },
+    speechRate: { learn: 0.62, clear: 0.66, quiz: 0.7 },
     challengeRatio: 0.28,
   },
 ];
@@ -52,16 +52,6 @@ const mascotOptions = [
 ];
 
 const stickerCatalog = ["晨光星星", "水果徽章", "森林脚印", "学校铅笔", "彩虹贴纸", "勇气宝石"];
-
-const phonicsOverrides = {
-  cat: { phonics: "c · a · t", ipa: "/kæt/", segments: ["ca", "t"] },
-  dog: { phonics: "d · o · g", ipa: "/dɔg/", segments: ["do", "g"] },
-  bird: { phonics: "b · ir · d", ipa: "/bɝːd/", segments: ["bir", "d"] },
-  fish: { phonics: "f · i · sh", ipa: "/fɪʃ/", segments: ["fi", "sh"] },
-  apple: { phonics: "a · pp · le", ipa: "/ˈæpəl/", segments: ["ap", "ple"] },
-  bus: { phonics: "b · u · s", ipa: "/bʌs/", segments: ["bu", "s"] },
-  book: { phonics: "b · oo · k", ipa: "/bʊk/", segments: ["boo", "k"] },
-};
 
 const themeDefinitions = [
   { id: "animals", name: "动物乐园", shortName: "动物", color: "#f06a6a", icon: "🐾" },
@@ -472,7 +462,6 @@ app.addEventListener("click", (event) => {
   }
   if (action === "toggle-sound") toggleSound();
   if (action === "speak-word") speakWord(value, actionTarget.dataset.clarity || "clear");
-  if (action === "speak-segments") speakWordSegments(value);
   if (action === "choose-mascot") chooseMascot(value);
   if (action === "learn-prev") moveLearn(-1);
   if (action === "learn-next") moveLearn(1);
@@ -522,7 +511,6 @@ function buildVocabulary() {
   return Object.entries(vocabularySeeds).flatMap(([themeId, entries]) =>
     entries.map(([word, meaning, symbol], index) => {
       const level = levelForIndex(index);
-      const speech = speechDataFor(word);
       return {
         id: `${themeId}-${slugify(word)}`,
         themeId,
@@ -531,9 +519,6 @@ function buildVocabulary() {
         symbol,
         image: createWordImage(themeId, word, meaning, index),
         example: exampleFor(themeId, word),
-        phonics: speech.phonics,
-        ipa: speech.ipa,
-        segments: speech.segments,
         ageBands: ageBandsForLevel(level),
         level,
         spellingLevel: spellingForLevel(level),
@@ -562,43 +547,25 @@ function spellingForLevel(level) {
   return "full";
 }
 
-function speechDataFor(word) {
-  const clean = cleanWord(word);
-  if (phonicsOverrides[clean]) return phonicsOverrides[clean];
-  const letters = clean.split("");
-  const midpoint = clean.length <= 4 ? clean.length - 1 : Math.ceil(clean.length / 2);
-  const segments =
-    clean.length <= 2 ? [clean] : [clean.slice(0, Math.max(1, midpoint)), clean.slice(Math.max(1, midpoint))];
-  return {
-    phonics: letters.join(" · "),
-    ipa: "",
-    segments: segments.filter(Boolean),
-  };
-}
-
 function createWordImage(themeId, word, meaning, index) {
   const theme = themeMap[themeId];
   const hue = Math.abs(hashString(`${themeId}-${word}`)) % 360;
   const accent = theme?.color || `hsl(${hue} 72% 46%)`;
   const warm = `hsl(${(hue + 34) % 360} 86% 72%)`;
   const cool = `hsl(${(hue + 205) % 360} 70% 86%)`;
-  const initial = cleanWord(word).slice(0, 1).toUpperCase() || "?";
   const clean = cleanWord(word);
-  const label = escapeSvg(meaning.slice(0, 4));
-  const object = illustrationSvgFor(clean, themeId, accent, warm, initial, index);
+  const object = illustrationSvgFor(clean, themeId, accent, warm, index);
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 216 216" role="img" aria-label="${escapeSvg(word)}">
       <rect width="216" height="216" rx="28" fill="${cool}"/>
       <circle cx="42" cy="42" r="18" fill="${warm}" opacity=".85"/>
       <circle cx="178" cy="48" r="10" fill="#fff" opacity=".82"/>
       ${object}
-      <rect x="42" y="162" width="132" height="30" rx="15" fill="#fff" opacity=".9"/>
-      <text x="108" y="182" text-anchor="middle" font-family="PingFang SC, Arial, sans-serif" font-size="17" font-weight="800" fill="#233142">${label}</text>
     </svg>`;
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg.replace(/\s+/g, " ").trim())}`;
 }
 
-function illustrationSvgFor(word, themeId, accent, warm, initial, index) {
+function illustrationSvgFor(word, themeId, accent, warm, index) {
   const colorMap = {
     red: "#ef4444",
     blue: "#2563eb",
@@ -642,11 +609,41 @@ function illustrationSvgFor(word, themeId, accent, warm, initial, index) {
   if (themeId === "transport") {
     return `<rect x="50" y="83" width="116" height="46" rx="14" fill="${accent}"/><rect x="74" y="64" width="60" height="28" rx="10" fill="${warm}"/><circle cx="78" cy="132" r="13" fill="#233142"/><circle cx="138" cy="132" r="13" fill="#233142"/><circle cx="78" cy="132" r="5" fill="#fff"/><circle cx="138" cy="132" r="5" fill="#fff"/>`;
   }
+  if (themeId === "school") {
+    return `<path d="M58 64 H116 C130 64 140 74 140 88 V150 H76 C66 150 58 142 58 132Z" fill="#244c8f"/><path d="M78 72 H138 C150 72 158 80 158 94 V154 H92 C84 154 78 148 78 140Z" fill="#fff"/><path d="M90 92 H142 M90 112 H136 M90 132 H126" stroke="${accent}" stroke-width="7" stroke-linecap="round"/><path d="M61 150 H155" stroke="#233142" stroke-width="7" stroke-linecap="round"/>`;
+  }
+  if (themeId === "family") {
+    return `<path d="M54 103 L108 58 L162 103 V153 H54Z" fill="${accent}"/><path d="M44 105 L108 51 L172 105" fill="none" stroke="#233142" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><rect x="82" y="112" width="52" height="41" rx="8" fill="#fff" opacity=".9"/><circle cx="95" cy="96" r="8" fill="#fff"/><circle cx="121" cy="96" r="8" fill="#fff"/>`;
+  }
+  if (themeId === "body") {
+    return `<path d="M70 129 V88 C70 80 82 80 82 88 V117 V72 C82 64 94 64 94 72 V116 V67 C94 59 106 59 106 67 V116 V75 C106 67 118 67 118 75 V120 L130 97 C134 89 145 94 142 103 L130 137 C124 153 112 163 94 163 C79 163 70 149 70 129Z" fill="${accent}"/><path d="M82 89 V122 M94 73 V119 M106 72 V120 M118 80 V125" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".6"/>`;
+  }
+  if (themeId === "clothes") {
+    return `<path d="M71 62 L93 51 C99 61 117 61 123 51 L145 62 L166 87 L145 106 V153 H71 V106 L50 87Z" fill="${accent}"/><path d="M91 58 C96 72 120 72 125 58" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/><path d="M75 109 H141" stroke="#fff" stroke-width="8" stroke-linecap="round" opacity=".42"/>`;
+  }
+  if (themeId === "actions") {
+    return `<circle cx="112" cy="58" r="18" fill="${warm}"/><path d="M96 86 L125 92 L144 75" fill="none" stroke="${accent}" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/><path d="M123 93 L105 123 L80 142" fill="none" stroke="#233142" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/><path d="M115 119 L145 143" fill="none" stroke="#233142" stroke-width="13" stroke-linecap="round"/><path d="M74 151 H95 M137 153 H158" stroke="${warm}" stroke-width="8" stroke-linecap="round"/>`;
+  }
+  if (themeId === "nature") {
+    return `<rect x="99" y="105" width="20" height="52" rx="8" fill="#8b5e34"/><circle cx="92" cy="92" r="30" fill="${accent}"/><circle cx="126" cy="91" r="31" fill="#43aa8b"/><circle cx="108" cy="67" r="29" fill="#5fd39d"/><path d="M69 157 H152" stroke="#233142" stroke-width="9" stroke-linecap="round"/>`;
+  }
+  if (themeId === "weather") {
+    return `<circle cx="78" cy="70" r="25" fill="#ffcf5a"/><path d="M62 126 C50 126 41 117 41 105 C41 93 50 84 63 84 C70 66 91 58 108 70 C118 61 136 64 143 78 C160 80 173 94 173 112 C173 127 161 138 145 138 H64 C54 138 62 126 62 126Z" fill="#fff"/><path d="M79 154 L73 169 M108 154 L102 169 M137 154 L131 169" stroke="${accent}" stroke-width="8" stroke-linecap="round"/>`;
+  }
+  if (themeId === "numbers") {
+    return `<rect x="55" y="58" width="44" height="44" rx="10" fill="#fff"/><rect x="117" y="58" width="44" height="44" rx="10" fill="${accent}"/><rect x="86" y="119" width="44" height="44" rx="10" fill="${warm}"/><circle cx="77" cy="80" r="7" fill="${accent}"/><circle cx="139" cy="80" r="7" fill="#fff"/><circle cx="108" cy="141" r="7" fill="#233142"/>`;
+  }
+  if (themeId === "shapes") {
+    return `<circle cx="75" cy="88" r="29" fill="${accent}"/><rect x="110" y="61" width="54" height="54" rx="12" fill="${warm}"/><path d="M108 125 L151 166 H65Z" fill="#244c8f"/>`;
+  }
+  if (themeId === "feelings") {
+    return `<circle cx="108" cy="104" r="55" fill="${warm}"/><circle cx="89" cy="94" r="8" fill="#233142"/><circle cx="127" cy="94" r="8" fill="#233142"/><path d="M82 119 Q108 145 134 119" fill="none" stroke="#233142" stroke-width="8" stroke-linecap="round"/><circle cx="76" cy="112" r="10" fill="#ff8aa6" opacity=".55"/><circle cx="140" cy="112" r="10" fill="#ff8aa6" opacity=".55"/>`;
+  }
   const shape = index % 3;
   if (shape === 1) {
-    return `<rect x="58" y="48" width="100" height="90" rx="26" fill="${accent}"/><path d="M80 61 L108 28 L136 61" fill="${warm}"/><circle cx="108" cy="94" r="21" fill="#fff"/><text x="108" y="104" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" font-weight="900" fill="#233142">${initial}</text>`;
+    return `<rect x="58" y="48" width="100" height="90" rx="26" fill="${accent}"/><path d="M80 61 L108 28 L136 61" fill="${warm}"/><circle cx="91" cy="90" r="8" fill="#fff"/><circle cx="125" cy="90" r="8" fill="#fff"/><path d="M82 118 H134" stroke="#fff" stroke-width="8" stroke-linecap="round" opacity=".7"/>`;
   }
-  return `<circle cx="108" cy="92" r="48" fill="${accent}"/><circle cx="91" cy="79" r="8" fill="#fff"/><circle cx="125" cy="79" r="8" fill="#fff"/><path d="M86 112 Q108 132 130 112" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round"/><text x="108" y="105" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" font-weight="900" fill="#233142">${initial}</text>`;
+  return `<circle cx="108" cy="98" r="48" fill="${accent}"/><circle cx="91" cy="86" r="8" fill="#fff"/><circle cx="125" cy="86" r="8" fill="#fff"/><path d="M86 119 Q108 139 130 119" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round"/>`;
 }
 
 function exampleFor(themeId, word) {
@@ -1561,10 +1558,6 @@ function renderLearn() {
           <span class="theme-chip">${theme.name}</span>
           <h2>${escapeHtml(word.word)}</h2>
           <p class="meaning">${escapeHtml(word.meaning)}</p>
-          <div class="phonics-row">
-            <span>${escapeHtml(word.phonics)}</span>
-            ${word.ipa && appState.selectedAgeBand !== "preschool" ? `<small>${escapeHtml(word.ipa)}</small>` : ""}
-          </div>
           <p class="example">${escapeHtml(word.example)}</p>
           <div class="mastery-row">
             ${renderStars(stats.mastery)}
@@ -1573,7 +1566,6 @@ function renderLearn() {
         </div>
         <div class="sound-actions">
           <button class="sound-button" data-action="speak-word" data-clarity="learn" data-value="${escapeAttr(word.word)}">慢速听两遍</button>
-          <button class="secondary-button" data-action="speak-segments" data-value="${escapeAttr(word.id)}">分段发音</button>
         </div>
       </article>
       <div class="learn-controls">
@@ -1782,7 +1774,7 @@ function renderQuestionPrompt(question) {
     <div class="question-prompt">
       <p class="quiz-title">${question.title}</p>
       ${renderWordImage(question.word, "quiz-symbol")}
-      <p class="quiz-hint">${escapeHtml(question.word.meaning)} · ${escapeHtml(question.word.phonics)}</p>
+      <p class="quiz-hint">${escapeHtml(question.word.meaning)} · ${escapeHtml(question.word.example)}</p>
     </div>
   `;
 }
@@ -2130,27 +2122,6 @@ function speakWord(text, clarity = "clear") {
 
   window.speechSynthesis.cancel();
   if (clarity === "learn") utterance.onend = () => repeatSpeechOnce(sequenceId, speechText, clarity, 1050);
-  window.speechSynthesis.speak(utterance);
-}
-
-function speakWordSegments(wordId) {
-  if (!("speechSynthesis" in window)) return;
-  const word = vocabulary.find((item) => item.id === wordId);
-  if (!word) return;
-  const sequenceId = (speechSequenceId += 1);
-  const parts = [...word.segments, word.word].filter(Boolean);
-  window.speechSynthesis.cancel();
-  speakParts(parts, sequenceId, 0);
-}
-
-function speakParts(parts, sequenceId, index) {
-  if (sequenceId !== speechSequenceId || index >= parts.length) return;
-  const utterance = createSpeechUtterance(prepareSpeechText(parts[index], "segment"), speechRateForAge("segment"), 1);
-  preferredEnglishVoice = preferredEnglishVoice || pickEnglishVoice();
-  if (preferredEnglishVoice) utterance.voice = preferredEnglishVoice;
-  utterance.onend = () => {
-    window.setTimeout(() => speakParts(parts, sequenceId, index + 1), 520);
-  };
   window.speechSynthesis.speak(utterance);
 }
 
