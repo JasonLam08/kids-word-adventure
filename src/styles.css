@@ -398,12 +398,19 @@ h3 {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  flex: 0 0 auto;
+  min-width: 118px;
   min-height: 52px;
   padding: 6px 12px;
   border-radius: 8px;
   background: #fff;
   color: #233142;
   border: 2px solid rgba(35, 49, 66, 0.08);
+}
+
+.mascot-strip small {
+  white-space: nowrap;
+  font-weight: 850;
 }
 
 .mascot-strip button.is-active,
@@ -431,8 +438,8 @@ h3 {
 }
 
 .mascot-choice-image {
-  width: 34px;
-  height: 34px;
+  width: 42px;
+  height: 42px;
 }
 
 .metric {

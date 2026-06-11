@@ -2019,7 +2019,7 @@ function mascotSvg(id) {
   if (id === "owl") {
     return `<svg viewBox="0 0 80 80" aria-hidden="true"><path d="M18 19 L31 25 L40 15 L49 25 L62 19 L60 50 C58 66 48 72 40 72 C32 72 22 66 20 50Z" fill="#6d5dfc"/><circle cx="31" cy="39" r="12" fill="#fff"/><circle cx="49" cy="39" r="12" fill="#fff"/><circle cx="31" cy="39" r="5" fill="#233142"/><circle cx="49" cy="39" r="5" fill="#233142"/><path d="M36 52 L44 52 L40 59Z" fill="#ffb000"/></svg>`;
   }
-  return `<svg viewBox="0 0 80 80" aria-hidden="true"><path d="M17 27 L25 10 L35 25 Q40 21 45 25 L55 10 L63 27 C70 49 58 70 40 70 C22 70 10 49 17 27Z" fill="#f97316"/><path d="M24 29 L31 17 L35 31Z" fill="#fff3d7"/><path d="M56 29 L49 17 L45 31Z" fill="#fff3d7"/><circle cx="31" cy="41" r="4" fill="#233142"/><circle cx="49" cy="41" r="4" fill="#233142"/><path d="M34 51 Q40 58 46 51" fill="none" stroke="#233142" stroke-width="4" stroke-linecap="round"/><path d="M40 46 L45 50 L35 50Z" fill="#233142"/></svg>`;
+  return `<svg viewBox="0 0 80 80" aria-hidden="true"><path d="M20 30 L28 13 L38 27 Q40 26 42 27 L52 13 L60 30 C68 48 56 68 40 68 C24 68 12 48 20 30Z" fill="#f97316"/><path d="M28 29 L31 21 L36 31Z" fill="#ffd7a3"/><path d="M52 29 L49 21 L44 31Z" fill="#ffd7a3"/><path d="M23 44 C28 58 34 64 40 64 C46 64 52 58 57 44 C51 48 46 51 40 51 C34 51 29 48 23 44Z" fill="#fff3df"/><circle cx="31" cy="40" r="4.5" fill="#233142"/><circle cx="49" cy="40" r="4.5" fill="#233142"/><circle cx="32.5" cy="38.5" r="1.3" fill="#fff"/><circle cx="50.5" cy="38.5" r="1.3" fill="#fff"/><path d="M40 47 L46 51 L34 51Z" fill="#233142"/><path d="M34 55 Q40 60 46 55" fill="none" stroke="#233142" stroke-width="3.5" stroke-linecap="round"/></svg>`;
 }
 
 function renderOptionImage(option) {
