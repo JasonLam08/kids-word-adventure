@@ -4,6 +4,7 @@ const ageOptions = [
   {
     id: "preschool",
     label: "3-5 岁",
+    icon: "🧩",
     title: "图像和声音先行",
     detail: "每轮 6 题，重点是看图、听音和轻松选择。",
     roundSize: 6,
@@ -12,6 +13,7 @@ const ageOptions = [
   {
     id: "primary",
     label: "6-9 岁",
+    icon: "✏️",
     title: "选择加字母拼搭",
     detail: "每轮 8 题，加入带提示的字母块拼写。",
     roundSize: 8,
@@ -20,6 +22,7 @@ const ageOptions = [
   {
     id: "older",
     label: "10-12 岁",
+    icon: "🏆",
     title: "例句和完整拼写",
     detail: "每轮 10 题，包含完整拼写和更高阶词汇。",
     roundSize: 10,
@@ -430,6 +433,7 @@ app.addEventListener("click", (event) => {
     activeQuiz = null;
     showAgePicker = false;
     render();
+    scrollToTopSoon();
   }
   if (action === "toggle-sound") toggleSound();
   if (action === "speak-word") speakWord(value, actionTarget.dataset.clarity || "clear");
@@ -628,6 +632,7 @@ function chooseAge(ageBand) {
   activeQuiz = null;
   saveState();
   render();
+  scrollToTopSoon();
 }
 
 function getAgeConfig() {
@@ -827,6 +832,7 @@ function startQuiz(mode) {
   currentView = "quiz";
   showAgePicker = false;
   render();
+  scrollToTopSoon();
 
   if (questions[0]?.mode === "listen") {
     window.setTimeout(() => speakWord(questions[0].word.word, "quiz"), 120);
@@ -974,6 +980,7 @@ function finishQuestion(isCorrect, selectedValue) {
     activeQuiz.wrongWordIds.push(question.word.id);
     playWrongSound();
   }
+  vibrateFeedback(isCorrect);
   recordAnswer(question.word.id, isCorrect);
   render();
 }
@@ -993,6 +1000,7 @@ function nextQuestion() {
   activeQuiz.typedAnswer = "";
   activeQuiz.builtAnswer = "";
   render();
+  scrollToTopSoon();
 
   const question = getCurrentQuestion();
   if (question?.mode === "listen") {
@@ -1011,6 +1019,7 @@ function completeQuiz() {
   );
   playCompleteSound();
   render();
+  scrollToTopSoon();
 }
 
 function getCurrentQuestion() {
@@ -1039,6 +1048,11 @@ function resetCurrentProgress() {
   currentLearnIndex = 0;
   saveState();
   render();
+  scrollToTopSoon();
+}
+
+function scrollToTopSoon() {
+  window.requestAnimationFrame(() => window.scrollTo(0, 0));
 }
 
 function render() {
@@ -1056,7 +1070,7 @@ function render() {
     quiz: renderQuiz,
   };
   app.innerHTML = `
-    <main class="app-shell">
+    <main class="app-shell ${currentView === "quiz" ? "is-quiz-mode" : ""}">
       ${renderHeader()}
       ${renderNav()}
       <section class="view-surface">
@@ -1083,9 +1097,13 @@ function renderAgeGate() {
           .map(
             (age) => `
               <button class="age-option ${current === age.id ? "is-current" : ""}" data-action="choose-age" data-value="${age.id}">
-                <span class="age-label">${age.label}</span>
+                <span class="age-option-top">
+                  <span class="age-icon">${age.icon}</span>
+                  <span class="age-label">${age.label}</span>
+                </span>
                 <strong>${age.title}</strong>
                 <span>${age.detail}</span>
+                <small>每轮 ${age.roundSize} 题</small>
               </button>
             `,
           )
@@ -1101,7 +1119,7 @@ function renderHeader() {
   const mastered = profile.unlockedWordIds.filter((id) => profile.wordStats[id]?.mastery >= 4).length;
   return `
     <header class="topbar">
-      <div>
+      <div class="topbar-title">
         <p class="eyebrow">单词小冒险</p>
         <h1>今日 10 词</h1>
       </div>
@@ -1120,19 +1138,20 @@ function renderHeader() {
 
 function renderNav() {
   const items = [
-    ["home", "首页"],
-    ["learn", "学习卡"],
-    ["practice", "练习"],
-    ["review", "复习"],
-    ["parents", "家长"],
+    ["home", "⌂", "首页"],
+    ["learn", "▣", "学习"],
+    ["practice", "▶", "练习"],
+    ["review", "↺", "复习"],
+    ["parents", "○", "家长"],
   ];
   return `
     <nav class="nav-tabs" aria-label="主导航">
       ${items
         .map(
-          ([id, label]) => `
+          ([id, icon, label]) => `
             <button class="${currentView === id ? "is-active" : ""}" data-action="set-view" data-value="${id}">
-              ${label}
+              <span class="nav-icon" aria-hidden="true">${icon}</span>
+              <span class="nav-label">${label}</span>
             </button>
           `,
         )
@@ -1148,21 +1167,25 @@ function renderHome() {
   const stats = getDashboardStats(profile);
   return `
     <div class="dashboard-grid">
+      <section class="action-band home-hero-band">
+        <div class="home-hero-copy">
+          <span class="home-hero-icon" aria-hidden="true">A</span>
+          <div>
+          <h2>今天从这 10 个词开始</h2>
+          <p>系统会把错词和低掌握词排到前面。表现稳定时，会自动解锁 5 个新词。</p>
+          </div>
+        </div>
+        <div class="action-row action-row-large">
+          <button class="primary-button big-action" data-action="set-view" data-value="learn">先学一遍</button>
+          <button class="secondary-button big-action" data-action="start-quiz" data-value="picture">开始闯关</button>
+          <button class="secondary-button big-action" data-action="set-view" data-value="review">复习错词</button>
+        </div>
+      </section>
       <section class="summary-band">
         ${renderMetric("开放词", profile.unlockedWordIds.length, `总词库 ${getEligibleWords().length} 个`)}
         ${renderMetric("掌握词", stats.masteredWords, "掌握度达到 4 分")}
         ${renderMetric("待复习", reviewWords.length, reviewWords.length > 8 ? "先稳住复习" : "节奏很好")}
         ${renderMetric("最近正确率", `${stats.recentAccuracy}%`, "最近两轮表现")}
-      </section>
-      <section class="action-band">
-        <div>
-          <h2>今天从这 10 个词开始</h2>
-          <p>系统会把错词和低掌握词排到前面。表现稳定时，会自动解锁 5 个新词。</p>
-        </div>
-        <div class="action-row">
-          <button class="primary-button" data-action="set-view" data-value="learn">学习卡片</button>
-          <button class="secondary-button" data-action="start-quiz" data-value="picture">开始练习</button>
-        </div>
       </section>
     </div>
     <section class="word-strip" aria-label="今日单词">
@@ -1205,9 +1228,15 @@ function renderLearn() {
         <button class="sound-button" data-action="speak-word" data-clarity="clear" data-value="${escapeAttr(word.word)}">清晰发音</button>
       </article>
       <div class="learn-controls">
-        <button class="secondary-button" data-action="learn-prev">上一张</button>
-        <span>${currentLearnIndex + 1} / ${words.length}</span>
-        <button class="secondary-button" data-action="learn-next">下一张</button>
+        <button class="secondary-button step-button" data-action="learn-prev" aria-label="上一张">
+          <span class="pager-arrow" aria-hidden="true">‹</span>
+          <span class="pager-label">上一张</span>
+        </button>
+        <span class="learn-count">${currentLearnIndex + 1}/${words.length}</span>
+        <button class="secondary-button step-button" data-action="learn-next" aria-label="下一张">
+          <span class="pager-label">下一张</span>
+          <span class="pager-arrow" aria-hidden="true">›</span>
+        </button>
       </div>
     </section>
   `;
@@ -1216,10 +1245,10 @@ function renderLearn() {
 function renderPractice() {
   const ageConfig = getAgeConfig();
   const modes = [
-    ["picture", "看图选词", "看到图像后，从 4 个英文选项中选出正确单词。"],
-    ["listen", "听音选图", "先听英文发音，再选择对应图案。"],
-    ["match", "英中配对", "看到英文单词，选择正确中文意思。"],
-    ["spell", "拼写单词", ageConfig.spelling === "none" ? "这个年龄段先不开放拼写。" : "根据图像和中文提示拼出英文。"],
+    ["picture", "◆", "看图选词", "看到图像后，从 4 个英文选项中选出正确单词。"],
+    ["listen", "♪", "听音选图", "先听英文发音，再选择对应图案。"],
+    ["match", "中", "英中配对", "看到英文单词，选择正确中文意思。"],
+    ["spell", "Aa", "拼写单词", ageConfig.spelling === "none" ? "这个年龄段先不开放拼写。" : "根据图像和中文提示拼出英文。"],
   ];
 
   return `
@@ -1230,16 +1259,17 @@ function renderPractice() {
       </div>
       <div class="mode-grid">
         ${modes
-          .map(([id, title, detail]) => {
+          .map(([id, icon, title, detail]) => {
             const disabled = id === "spell" && ageConfig.spelling === "none";
             return `
-              <article class="mode-card ${disabled ? "is-disabled" : ""}">
-                <h3>${title}</h3>
-                <p>${detail}</p>
-                <button class="${disabled ? "ghost-button" : "primary-button"}" data-action="start-quiz" data-value="${id}" ${disabled ? "disabled" : ""}>
-                  ${disabled ? "稍后开放" : "开始"}
-                </button>
-              </article>
+              <button class="mode-card mode-button ${disabled ? "is-disabled" : ""}" data-action="start-quiz" data-value="${id}" ${disabled ? "disabled" : ""}>
+                <span class="mode-icon" aria-hidden="true">${icon}</span>
+                <span class="mode-text">
+                  <strong>${title}</strong>
+                  <small>${detail}</small>
+                </span>
+                <span class="mode-cta">${disabled ? "稍后开放" : "开始"}</span>
+              </button>
             `;
           })
           .join("")}
@@ -1326,15 +1356,16 @@ function renderQuiz() {
   const isSpell = question.mode === "spell";
 
   return `
-    <section class="quiz-shell">
+    <section class="quiz-shell ${activeQuiz.answered ? "has-feedback" : ""}">
       <div class="quiz-topline">
+        <button class="quiz-exit" data-action="set-view" data-value="practice">退出</button>
         <span>${question.title}</span>
         <strong>${progress}</strong>
       </div>
       <div class="quiz-progress">
         <span style="width:${((activeQuiz.index + 1) / activeQuiz.questions.length) * 100}%"></span>
       </div>
-      <article class="quiz-card">
+      <article class="quiz-card ${activeQuiz.answered ? "is-answered" : ""}">
         ${renderQuestionPrompt(question)}
         ${
           isSpell
@@ -1350,32 +1381,40 @@ function renderQuiz() {
 function renderQuestionPrompt(question) {
   if (question.mode === "picture") {
     return `
-      <p class="quiz-title">${question.title}</p>
-      <div class="quiz-symbol">${question.prompt}</div>
-      <p class="quiz-hint">这张图片对应哪个英文单词？</p>
+      <div class="question-prompt">
+        <p class="quiz-title">${question.title}</p>
+        <div class="quiz-symbol">${question.prompt}</div>
+        <p class="quiz-hint">这张图片对应哪个英文单词？</p>
+      </div>
     `;
   }
 
   if (question.mode === "listen") {
     return `
-      <p class="quiz-title">${question.title}</p>
-      <button class="listen-button" data-action="speak-word" data-clarity="quiz" data-value="${escapeAttr(question.word.word)}">播放清晰发音</button>
-      <p class="quiz-hint">${question.prompt}</p>
+      <div class="question-prompt">
+        <p class="quiz-title">${question.title}</p>
+        <button class="listen-button" data-action="speak-word" data-clarity="quiz" data-value="${escapeAttr(question.word.word)}">点我听发音</button>
+        <p class="quiz-hint">${question.prompt}</p>
+      </div>
     `;
   }
 
   if (question.mode === "match") {
     return `
-      <p class="quiz-title">${question.title}</p>
-      <div class="quiz-word">${escapeHtml(question.prompt)}</div>
-      <button class="small-link" data-action="speak-word" data-clarity="clear" data-value="${escapeAttr(question.word.word)}">听一下</button>
+      <div class="question-prompt">
+        <p class="quiz-title">${question.title}</p>
+        <div class="quiz-word">${escapeHtml(question.prompt)}</div>
+        <button class="small-link" data-action="speak-word" data-clarity="clear" data-value="${escapeAttr(question.word.word)}">听发音</button>
+      </div>
     `;
   }
 
   return `
-    <p class="quiz-title">${question.title}</p>
-    <div class="quiz-symbol">${question.word.symbol}</div>
-    <p class="quiz-hint">${escapeHtml(question.word.meaning)} · ${escapeHtml(question.word.example)}</p>
+    <div class="question-prompt">
+      <p class="quiz-title">${question.title}</p>
+      <div class="quiz-symbol">${question.word.symbol}</div>
+      <p class="quiz-hint">${escapeHtml(question.word.meaning)} · ${escapeHtml(question.word.example)}</p>
+    </div>
   `;
 }
 
@@ -1431,10 +1470,10 @@ function renderFeedback(question) {
       ? cleanWord(activeQuiz.selectedValue) === question.answer
       : activeQuiz.selectedValue === question.answer;
   return `
-    <div class="feedback ${isCorrect ? "is-good" : "is-bad"}">
+    <div class="feedback ${isCorrect ? "is-good" : "is-bad"}" role="status" aria-live="polite">
       <span class="feedback-mark" aria-hidden="true">${isCorrect ? "✓" : "↺"}</span>
-      <strong>${isCorrect ? "答对了" : "再试一次也会更熟"}</strong>
-      <span>正确答案：${escapeHtml(question.word.word)} · ${escapeHtml(question.word.meaning)}</span>
+      <strong>${isCorrect ? "答对啦" : "记住这一题"}</strong>
+      <span class="feedback-answer">正确答案：${escapeHtml(question.word.word)} · ${escapeHtml(question.word.meaning)}</span>
       <button class="primary-button" data-action="next-question">${activeQuiz.index >= activeQuiz.questions.length - 1 ? "看结果" : "下一题"}</button>
     </div>
   `;
@@ -1670,6 +1709,11 @@ function scoreEnglishVoice(voice) {
   if (voice.localService) score += 4;
 
   return score;
+}
+
+function vibrateFeedback(isCorrect) {
+  if (!("vibrate" in navigator)) return;
+  navigator.vibrate(isCorrect ? [18, 24, 18] : [28]);
 }
 
 function getAudioContext() {
