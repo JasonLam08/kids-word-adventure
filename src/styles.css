@@ -381,15 +381,14 @@ h3 {
 }
 
 .mascot-strip {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto repeat(3, minmax(110px, 1fr));
   align-items: center;
   gap: 10px;
   padding: 12px;
-  overflow-x: auto;
 }
 
 .mascot-strip > span {
-  flex: 0 0 auto;
   color: #667085;
   font-weight: 900;
 }
@@ -397,9 +396,9 @@ h3 {
 .mascot-strip button {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  flex: 0 0 auto;
-  min-width: 118px;
+  min-width: 0;
   min-height: 52px;
   padding: 6px 12px;
   border-radius: 8px;
@@ -1018,6 +1017,44 @@ h3 {
 }
 
 .built-word.has-letter-feedback span.is-miss {
+  background: #fff0f0;
+  color: #9f2d2d;
+}
+
+.letter-slots {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: min(520px, 100%);
+}
+
+.letter-slots span {
+  display: grid;
+  place-items: center;
+  min-width: 42px;
+  height: 48px;
+  border-radius: 8px;
+  background: #fff;
+  color: #244c8f;
+  border: 2px dashed rgba(36, 76, 143, 0.28);
+  font-size: 24px;
+  font-weight: 950;
+}
+
+.letter-slots span.is-filled {
+  border-style: solid;
+  background: #eef5ff;
+}
+
+.letter-slots span.is-right {
+  border-color: #0a9f6e;
+  background: #e8fff4;
+  color: #076a4b;
+}
+
+.letter-slots span.is-miss {
+  border-color: #d84f4f;
   background: #fff0f0;
   color: #9f2d2d;
 }
@@ -1861,6 +1898,41 @@ button:active {
   gap: 16px;
 }
 
+.kid-goal-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.kid-goal-row span {
+  display: grid;
+  place-items: center;
+  min-height: 66px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(35, 49, 66, 0.08);
+}
+
+.kid-goal-row b,
+.kid-goal-row small {
+  display: block;
+  line-height: 1;
+}
+
+.kid-goal-row b {
+  color: #244c8f;
+  font-size: 28px;
+  font-weight: 950;
+}
+
+.kid-goal-row small {
+  margin-top: 6px;
+  color: #566273;
+  font-weight: 900;
+}
+
 .home-hero-icon {
   width: 64px;
   height: 64px;
@@ -2077,13 +2149,13 @@ button:active {
 
   .app-shell {
     padding-top: calc(10px + env(safe-area-inset-top));
-    padding-bottom: calc(var(--mobile-nav-height) + 18px + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--mobile-nav-height) + 38px + env(safe-area-inset-bottom));
   }
 
   .app-shell.is-quiz-mode {
     width: calc(100% - 20px);
     padding-top: calc(8px + env(safe-area-inset-top));
-    padding-bottom: calc(122px + env(safe-area-inset-bottom));
+    padding-bottom: calc(144px + env(safe-area-inset-bottom));
   }
 
   .app-shell.is-quiz-mode .topbar,
@@ -2210,7 +2282,22 @@ button:active {
   }
 
   .mascot-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     padding: 10px;
+  }
+
+  .mascot-strip > span {
+    grid-column: 1 / -1;
+  }
+
+  .mascot-strip button {
+    min-height: 58px;
+    padding: 6px;
+    gap: 6px;
+  }
+
+  .mascot-strip small {
+    font-size: 13px;
   }
 
   .metric {

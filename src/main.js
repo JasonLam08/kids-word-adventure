@@ -1486,6 +1486,7 @@ function renderHome() {
   const mascot = getSelectedMascot(profile);
   const starTarget = getAgeConfig().roundSize;
   const stickerProgress = Math.min(100, Math.round(((profile.stars % 6) / 6) * 100));
+  const ageConfig = getAgeConfig();
   return `
     <div class="dashboard-grid">
       <section class="action-band home-hero-band">
@@ -1493,7 +1494,15 @@ function renderHome() {
           ${renderMascotImage(mascot, "home-hero-icon")}
           <div>
             <h2>${mascot.name}的今日冒险</h2>
-            <p>目标：完成 ${starTarget} 个小任务，收集星星和贴纸。系统会自动混合看图、听音、配对和拼写。</p>
+            ${
+              ageConfig.hintLevel === "strong"
+                ? `<div class="kid-goal-row" aria-label="今日目标">
+                    <span><b>${starTarget}</b><small>任务</small></span>
+                    <span><b>★</b><small>星星</small></span>
+                    <span><b>▣</b><small>贴纸</small></span>
+                  </div>`
+                : `<p>目标：完成 ${starTarget} 个小任务，收集星星和贴纸。系统会自动混合看图、听音、配对和拼写。</p>`
+            }
           </div>
         </div>
         <div class="action-row action-row-large">
@@ -1796,6 +1805,8 @@ function renderAnswerOption(option, question) {
 function renderSpellQuestion(question) {
   const ageConfig = getAgeConfig();
   const full = question.variant === "full";
+  const built = activeQuiz.builtAnswer || cleanWord(activeQuiz.typedAnswer || "");
+  const displayLetters = ageConfig.hintLevel === "strong" ? question.answer.split("") : question.letters;
   const placeholder =
     ageConfig.hintLevel === "strong"
       ? `${question.word.word.slice(0, 1)}${" · ".repeat(Math.max(0, question.answer.length - 1))}`
@@ -1805,8 +1816,26 @@ function renderSpellQuestion(question) {
     <div class="spell-panel ${full ? "is-full" : "is-guided"}">
       ${full ? `<input class="spell-input" data-spell-input autocomplete="off" autocapitalize="none" spellcheck="false" value="${escapeAttr(activeQuiz.typedAnswer)}" placeholder="${escapeAttr(placeholder)}" ${activeQuiz.answered ? "disabled" : ""} />` : ""}
       ${renderBuiltWord(question)}
+      <div class="letter-slots" aria-hidden="true">
+        ${question.answer
+          .split("")
+          .map((letter, index) => {
+            const filled = built[index] || "";
+            const state =
+              activeQuiz.answered && filled
+                ? filled === letter
+                  ? "is-right"
+                  : "is-miss"
+                : filled
+                  ? "is-filled"
+                  : "";
+            const hint = ageConfig.hintLevel === "strong" && index === 0 && !filled ? letter : "";
+            return `<span class="${state}">${escapeHtml(filled || hint)}</span>`;
+          })
+          .join("")}
+      </div>
       <div class="letter-bank">
-        ${question.letters
+        ${displayLetters
           .map(
             (letter) => `
               <button data-action="letter-add" data-value="${letter}" ${activeQuiz.answered ? "disabled" : ""}>${letter}</button>
@@ -2023,7 +2052,7 @@ function renderOptionImage(option) {
 }
 
 function renderBuiltWord(question) {
-  const built = activeQuiz.builtAnswer || "";
+  const built = activeQuiz.builtAnswer || cleanWord(activeQuiz.typedAnswer || "");
   const display = built || (question.variant === "full" ? "也可以点下面字母辅助" : "点下面字母拼单词");
   if (!activeQuiz.answered || !built) {
     return `<div class="built-word">${escapeHtml(display)}</div>`;
